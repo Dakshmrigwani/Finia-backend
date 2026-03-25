@@ -1,0 +1,7 @@
+{
+  "Express Controller Function": {
+    "prefix": "exctrl",
+    "body": ["const ${1:functionName}: RequestHandler = async (req, res) => {", "  $0", "};"],
+    "description": "Insert a new Express controller function"
+  }
+}

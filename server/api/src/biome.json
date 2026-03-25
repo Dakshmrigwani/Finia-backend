@@ -1,0 +1,66 @@
+{
+  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+  "files": {
+    "include": ["src/**/*.ts"],
+    "ignoreUnknown": true
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "lineWidth": 120,
+    "lineEnding": "lf",
+    "indentWidth": 2
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "semicolons": "always",
+      "trailingCommas": "all",
+      "arrowParentheses": "always"
+    }
+  },
+  "organizeImports": { "enabled": true },
+  "linter": {
+    "enabled": true,
+    "ignore": ["src/utils/paginate.ts"],
+    "rules": {
+      "recommended": true,
+      "correctness": {
+        "noUnsafeFinally": "error",
+        "noUnusedImports": "error",
+        "noUnusedFunctionParameters": "error"
+      },
+      "suspicious": {
+        "noExplicitAny": "warn",
+        "noConfusingVoidType": "warn",
+        "noDuplicateObjectKeys": "error",
+        "noDuplicateCase": "error",
+        "noAssignInExpressions": "off",
+        "noConsole": "warn"
+      },
+      "style": {
+        "noCommaOperator": "error",
+        "noUselessElse": "error",
+        "noVar": "error",
+        "useConst": "error",
+        "noNonNullAssertion": "off",
+        "noInferrableTypes": "warn",
+        "noParameterAssign": "error",
+        "useThrowOnlyError": "error"
+      },
+      "complexity": {
+        "noForEach": "off",
+        "noExcessiveCognitiveComplexity": "warn",
+        "noBannedTypes": "warn",
+        "noEmptyTypeParameters": "error",
+        "noUselessTernary": "error",
+        "useOptionalChain": "error"
+      },
+      "performance": {
+        "noAccumulatingSpread": "error",
+        "noDelete": "warn",
+        "noReExportAll": "error"
+      }
+    }
+  }
+}

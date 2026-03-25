@@ -1,0 +1,139 @@
+
+# Production configuration
+# with Traefik reverse proxy
+#
+# Usage:
+#   1. Copy .env.prod.example to .env.prod and fill in values:
+#      cp .env.prod.example .env.prod
+#   2. Run: docker-compose -f docker-compose.prod.yml up -d
+#
+# Prerequisites:
+#   1. Configure .env.prod with DOMAIN and ACME_EMAIL
+#   2. Ensure ports 80 and 443 are available
+#   3. Generate passwords: openssl rand -base64 32
+
+services:
+  traefik:
+    image: traefik:v3.2
+    container_name: src_traefik
+    command:
+      - "--api.dashboard=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=traefik-public"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      # Redirect HTTP to HTTPS
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      # Let's Encrypt
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@example.com}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      # Access logs
+      - "--accesslog=true"
+      - "--accesslog.bufferingsize=100"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_letsencrypt:/letsencrypt
+    networks:
+      - traefik-public
+    labels:
+      # Dashboard
+      - "traefik.enable=true"
+      - "traefik.http.routers.src-traefik.rule=Host(`traefik.${DOMAIN:-localhost}`)"
+      - "traefik.http.routers.src-traefik.entrypoints=websecure"
+      - "traefik.http.routers.src-traefik.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.src-traefik.service=api@internal"
+      - "traefik.http.routers.src-traefik.middlewares=src-auth"
+      - "traefik.http.middlewares.src-auth.basicauth.users=${TRAEFIK_DASHBOARD_AUTH:-admin:$$apr1$$xyz$$hash}"
+      # Security headers middleware
+      - "traefik.http.middlewares.src-security-headers.headers.stsSeconds=31536000"
+      - "traefik.http.middlewares.src-security-headers.headers.stsIncludeSubdomains=true"
+      - "traefik.http.middlewares.src-security-headers.headers.stsPreload=true"
+      - "traefik.http.middlewares.src-security-headers.headers.contentTypeNosniff=true"
+      - "traefik.http.middlewares.src-security-headers.headers.browserXssFilter=true"
+      - "traefik.http.middlewares.src-security-headers.headers.referrerPolicy=strict-origin-when-cross-origin"
+      - "traefik.http.middlewares.src-security-headers.headers.frameDeny=true"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  app:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: src_backend
+    env_file:
+      - .env.prod
+      - ./backend/.env
+    environment:
+      - DEBUG=false
+      - ENVIRONMENT=production
+      - POSTGRES_HOST=db
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+    networks:
+      - traefik-public
+      - backend-internal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.src-api.rule=Host(`api.${DOMAIN:-localhost}`)"
+      - "traefik.http.routers.src-api.entrypoints=websecure"
+      - "traefik.http.routers.src-api.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.src-api.middlewares=src-security-headers@docker"
+      - "traefik.http.services.src-api.loadbalancer.server.port=8000"
+      - "traefik.docker.network=traefik-public"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+  db:
+    image: postgres:16-alpine
+    container_name: src_db
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-src}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # NO external ports - only accessible within backend-internal network
+    networks:
+      - backend-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+
+networks:
+  traefik-public:
+    driver: bridge
+  backend-internal:
+    driver: bridge
+    internal: true
+
+volumes:
+  traefik_letsencrypt:
+  postgres_data:

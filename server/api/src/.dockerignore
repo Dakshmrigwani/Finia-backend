@@ -1,0 +1,12 @@
+node_modules
+.git
+.gitignore
+dist
+tests
+.vscode
+.husky
+*.log
+.env*
+generated
+.vscode
+.husky
