@@ -23,6 +23,7 @@ model User {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
   Token           Token[]
+  budgets         Budget[]
 
   @@map("users")
 }
@@ -40,6 +41,23 @@ model Token {
 
   @@index([token])
   @@map("tokens")
+}
+
+model Budget {
+  id     String @id @default(uuid())
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  category String
+  amount   Float  @default(0)
+  limit    Float  @default(0)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([userId, category]) // ← this is the key line
+  @@index([userId])
+  @@map("budgets")
 }
 
 enum UserRole {
