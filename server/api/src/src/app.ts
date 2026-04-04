@@ -47,7 +47,6 @@ if (env.mode === 'production') {
 app.get('/', (_, res) => {
   res.status(200).json({ status: 'OK' });
 });
-
 // v1 api routes
 app.use('/v1', routes);
 
