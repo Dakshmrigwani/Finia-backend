@@ -1,12 +1,29 @@
-import { authService, emailService, tokenService, userService } from '@/services';
-import type { AuthedReq } from '@/types';
-import type { LoginBody, RegisterBody } from '@/types/validation.types';
-import type { RequestHandler } from 'express';
-import httpStatus from 'http-status';
+import {
+  authService,
+  emailService,
+  tokenService,
+  userService,
+} from "@/services";
+import type { AuthedReq } from "@/types";
+import type { LoginBody, RegisterBody } from "@/types/validation.types";
+import type { RequestHandler } from "express";
+import httpStatus from "http-status";
+import {VERIFICATION_EMAIL} from "@/utils/email-templates";
+import { ApiError } from "@/utils/api-error";
 
 const register: RequestHandler = async (req, res) => {
   const user = await userService.createUser(req.body as RegisterBody);
+  if (!user) {
+    throw new ApiError(httpStatus.BAD_REQUEST, "Failed to create user");
+  }
   const tokens = await tokenService.generateAuthTokens(user);
+
+  const verifyEmailToken = await tokenService.generateVerifyEmailToken(user);
+  if (!verifyEmailToken) {
+    throw new ApiError(httpStatus.BAD_REQUEST, "Failed to create token");
+  }
+
+  await emailService.sendVerificationEmail(user.email, verifyEmailToken);
   res.status(httpStatus.CREATED).send({ user, tokens });
 };
 
@@ -19,11 +36,15 @@ const login: RequestHandler = async (req, res) => {
 
 const logout: RequestHandler = async (req, res) => {
   await authService.logout(req.body.refreshToken);
-  res.status(httpStatus.OK).send({ success: true, message: 'User logout successfully!' });
+  res
+    .status(httpStatus.OK)
+    .send({ success: true, message: "User logout successfully!" });
 };
 
 const forgotPassword: RequestHandler = async (req, res) => {
-  const resetPasswordToken = await tokenService.generateResetPasswordToken(req.body.email);
+  const resetPasswordToken = await tokenService.generateResetPasswordToken(
+    req.body.email,
+  );
   await emailService.sendResetPasswordEmail(req.body.email, resetPasswordToken);
   res.status(httpStatus.NO_CONTENT).send();
 };
@@ -34,7 +55,10 @@ const refreshTokens: RequestHandler = async (req, res) => {
 };
 
 const resetPassword: RequestHandler = async (req, res) => {
-  const updatedUser = await authService.resetPassword(req.query.token as string, req.body.password);
+  const updatedUser = await authService.resetPassword(
+    req.query.token as string,
+    req.body.password,
+  );
   await emailService.sendPasswordRestSuccessEmail(updatedUser.email);
   res.status(httpStatus.NO_CONTENT).send();
 };
@@ -51,6 +75,11 @@ const verifyEmail: RequestHandler = async (req, res) => {
   res.status(httpStatus.NO_CONTENT).send();
 };
 
+const resendEmailVerification: RequestHandler = async (req, res) => {
+  await authService.resendEmailVerification(req.body.token);
+  res.status(httpStatus.NO_CONTENT).send();
+};
+
 export default {
   login,
   logout,
@@ -60,4 +89,5 @@ export default {
   sendVerificationEmail,
   verifyEmail,
   register,
+  resendEmailVerification,
 };

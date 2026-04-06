@@ -5,12 +5,14 @@ import nodemailer from 'nodemailer';
 
 const transport = nodemailer.createTransport(env.email.smtp);
 if (env.mode !== 'test') {
+  logger.info('SMTP Config:', { host: env.email.smtp.host, port: env.email.smtp.port, secure: env.email.smtp.secure });
   transport
     .verify()
     .then(() => logger.info('Connected to email server'))
-    .catch(() =>
-      logger.warn('Unable to connect to email server. Make sure you have configured the SMTP options in .env'),
-    );
+    .catch((err) => {
+      logger.error('Email connection error:', err.message);
+      logger.warn('Unable to connect to email server. Make sure you have configured the SMTP options in .env');
+    });
 }
 
 const sendEmail = async (to: string, subject: string, html: string) => {
