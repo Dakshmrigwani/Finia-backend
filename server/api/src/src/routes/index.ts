@@ -1,5 +1,6 @@
 import express from 'express';
 import authRoute from './auth.route';
+import budgetRoute from './budget.route';
 import userRoute from './user.route';
 
 const router = express.Router();
@@ -12,6 +13,10 @@ const defaultRoutes = [
   {
     path: '/user',
     route: userRoute,
+  },
+  {
+    path: '/budget',
+    route: budgetRoute,
   },
 ];
 

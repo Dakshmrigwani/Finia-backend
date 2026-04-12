@@ -1,6 +1,6 @@
 import { env } from '@/config';
 import { logger } from '@/config/logger';
-import { ApiError } from '@/utils/api-error';
+import { ApiError } from '@/utils/apiError';
 import type { NextFunction, Request, Response } from 'express';
 import httpStatus from 'http-status';
 

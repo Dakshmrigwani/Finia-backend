@@ -2,7 +2,7 @@ import { env } from '@/config';
 import { tokenTypes } from '@/config/tokens';
 import { userService } from '@/services';
 import type { AppJwtPayload, AuthedReq } from '@/types';
-import { ApiError } from '@/utils/api-error';
+import { ApiError } from '@/utils/apiError';
 import type { NextFunction, Request, Response } from 'express';
 import httpStatus from 'http-status';
 import jwt from 'jsonwebtoken';

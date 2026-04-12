@@ -1,5 +1,9 @@
-import type { authValidation, userValidation } from '@/validations';
-import type { z } from 'zod';
+import type {
+  authValidation,
+  userValidation,
+  budgetValidation,
+} from "@/validations";
+import type { z } from "zod";
 
 type RegisterBody = z.infer<typeof authValidation.register.body>;
 type LoginBody = z.infer<typeof authValidation.login.body>;
@@ -17,6 +21,11 @@ type UpdateUserParams = z.infer<typeof userValidation.updateUser.params>;
 type UpdateUserBody = z.infer<typeof userValidation.updateUser.body>;
 type DeleteUserParams = z.infer<typeof userValidation.deleteUser.params>;
 
+// budget related types
+type CreateBudgetBody = z.infer<
+  typeof budgetValidation.createBudgetReport.body
+>;
+
 export type {
   RegisterBody,
   LoginBody,
@@ -33,4 +42,7 @@ export type {
   UpdateUserParams,
   UpdateUserBody,
   DeleteUserParams,
+
+  // budget related types
+  CreateBudgetBody,
 };

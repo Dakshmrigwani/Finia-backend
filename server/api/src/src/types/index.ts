@@ -1,11 +1,12 @@
-import type { Request } from 'express';
-import type { JwtPayload as BaseJwtPayload } from 'jsonwebtoken';
-import { Token, TokenType, User, UserRole } from '../generated/prisma/client';
+import type { Request } from "express";
+import type { JwtPayload as BaseJwtPayload } from "jsonwebtoken";
+import { Token, TokenType, User, UserRole, Budget } from "../generated/prisma/client";
 
 // Central export to prisma-client types
-export { User, Token, TokenType, UserRole };
+export { User, Token, TokenType, UserRole, Budget };
 
-export type SafeUser = Omit<User, 'password'>;
+export type SafeUser = Omit<User, "password">;
+
 
 export interface PaginationOptions {
   page?: number | string;
@@ -39,4 +40,19 @@ export interface CreateUserPayload {
   email: string;
   password: string;
   role?: UserRole;
+}
+
+
+// end user and token related types
+
+
+
+// start budget related types
+
+export interface CreateBudgetPayload {
+  amount: number;
+  limit: number;
+  category: string;
+  startDate: Date;
+  endDate: Date;
 }
