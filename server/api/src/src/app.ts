@@ -12,6 +12,8 @@ import mongoSanitize from 'express-mongo-sanitize';
 import helmet from 'helmet';
 import httpStatus from 'http-status';
 import { prismaErrorHandler } from './middlewares/prisma-error';
+import swaggerUi from "swagger-ui-express";
+import  specs  from "./docs/swagger";
 
 const app = express();
 
@@ -37,6 +39,8 @@ app.use(compression());
 
 // enable cors
 app.use(cors(corsOptions));
+
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(specs));
 
 // limit repeated failed requests to auth endpoints
 if (env.mode === 'production') {
