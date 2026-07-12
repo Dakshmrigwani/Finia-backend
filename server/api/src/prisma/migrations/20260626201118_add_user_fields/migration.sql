@@ -1,0 +1,6 @@
+-- AlterTable
+ALTER TABLE "users" ADD COLUMN     "dob" TIMESTAMP(3),
+ADD COLUMN     "income" DOUBLE PRECISION NOT NULL DEFAULT 0,
+ADD COLUMN     "martialStatus" VARCHAR(255),
+ADD COLUMN     "motive" VARCHAR(255),
+ADD COLUMN     "spendMostly" VARCHAR(255);

@@ -3,5 +3,6 @@ import tokenService from './token.service';
 import emailService from './email.service';
 import authService from './auth.service';
 import budgetService from './budget.service';
+import goalService from './goal.service';
 
-export { userService, tokenService, emailService, authService };
+export { userService, tokenService, emailService, authService, budgetService, goalService };

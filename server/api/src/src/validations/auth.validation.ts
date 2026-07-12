@@ -9,6 +9,11 @@ const register = {
       .max(20, { message: 'Name must be at most 20 characters long' }),
     email: z.string().email(),
     password: isPassword,
+    dob: z.date().optional(),
+    income: z.number().optional(),
+    maritalStatus: z.string().optional(),
+    motive: z.string().optional(),
+    spendMostly: z.string().optional(),
   }),
 };
 

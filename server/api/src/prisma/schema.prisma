@@ -14,18 +14,87 @@ datasource db {
 }
 
 model User {
-  id              String   @id @default(uuid())
-  name            String   @db.VarChar(255)
-  email           String   @unique
-  password        String   @db.VarChar(255)
-  role            UserRole @default(USER)
-  isEmailVerified Boolean  @default(false)
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  id              String    @id @default(uuid())
+  name            String    @db.VarChar(255)
+  email           String    @unique
+  password        String    @db.VarChar(255)
+  role            UserRole  @default(USER)
+  isEmailVerified Boolean   @default(false)
+  dob             DateTime?
+  martialStatus   String?   @db.VarChar(255)
+  motive          String?   @db.VarChar(255)
+  spendMostly     String?   @db.VarChar(255)
+  income          Float     @default(0)
+  goals           Goal[]
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
   Token           Token[]
   budgets         Budget[]
 
   @@map("users")
+}
+
+enum GoalStatus {
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+enum GoalType {
+  EMERGENCY_FUND
+  VACATION
+  CAR
+  HOME
+  GADGET
+  EDUCATION
+  INVESTMENT
+  CUSTOM
+}
+
+enum AutomationFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+enum GoalCreatedVia {
+  MANUAL
+  AI_PLAN
+}
+
+model Goal {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  goalName String
+  goalType GoalType @default(CUSTOM)
+
+  coverImage String?
+
+  targetAmount       Decimal @db.Decimal(12, 2)
+  currentSavedAmount Decimal @default(0) @db.Decimal(12, 2)
+
+  targetDate DateTime?
+
+  projectedCompletionDate DateTime?
+
+  status GoalStatus @default(ACTIVE)
+
+  smartSaverEnabled Boolean @default(false)
+
+  automationMinBalance Decimal? @db.Decimal(12, 2)
+
+  automationFrequency AutomationFrequency?
+
+  createdVia GoalCreatedVia @default(MANUAL)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
 }
 
 model Token {

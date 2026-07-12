@@ -11,8 +11,8 @@ async function startServer() {
     await prisma.$connect();
     logger.info('Connected to PostgreSQL');
 
-    server = app.listen(env.port, () => {
-      logger.info(`Listening on port ${env.port}`);
+    server = app.listen(env.port, '0.0.0.0', () => {
+      logger.info(`Listening on port ${env.port} on all interfaces`);
     });
   } catch (error) {
     logger.error('Error starting server:', error);

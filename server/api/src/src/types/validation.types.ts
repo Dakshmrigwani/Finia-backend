@@ -2,6 +2,7 @@ import type {
   authValidation,
   userValidation,
   budgetValidation,
+  goalValidation,
 } from "@/validations";
 import type { z } from "zod";
 
@@ -23,8 +24,14 @@ type DeleteUserParams = z.infer<typeof userValidation.deleteUser.params>;
 
 // budget related types
 type CreateBudgetBody = z.infer<
-  typeof budgetValidation.createBudgetReport.body
+  typeof budgetValidation.createBudget.body
 >;
+
+// goal related types
+type CreateGoalBody = z.infer<typeof goalValidation.createGoal.body>;
+type UpdateGoalBody = z.infer<typeof goalValidation.updateGoal.body>;
+type GetGoalParams = z.infer<typeof goalValidation.getGoal.params>;
+type DeleteGoalParams = z.infer<typeof goalValidation.deleteGoal.params>;
 
 export type {
   RegisterBody,
@@ -45,4 +52,10 @@ export type {
 
   // budget related types
   CreateBudgetBody,
+
+  // goal related types
+  CreateGoalBody,
+  UpdateGoalBody,
+  GetGoalParams,
+  DeleteGoalParams,
 };
