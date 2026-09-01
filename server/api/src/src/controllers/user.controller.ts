@@ -17,7 +17,8 @@ const getUsers: RequestHandler = asyncWrapper(async (req, res) => {
   const filter = pick(query, ['name', 'role']);
 
   const result = await userService.queryUsers(options, filter);
-  const payload = ApiResponse.ok("Users retrieved successfully", result.results, result.meta);
+  const { results, ...meta } = result;
+  const payload = ApiResponse.ok("Users retrieved successfully", results, meta);
   sendResponse(res, httpStatus.OK, payload);
 });
 
@@ -45,19 +46,22 @@ const updateUserProfile: RequestHandler = asyncWrapper(async (req, res) => {
 });
 
 const getUser: RequestHandler = asyncWrapper(async (req, res) => {
-  const user = await userService.getUserById(req.params.userId);
+  const userId = req.params.userId as string;
+  const user = await userService.getUserById(userId);
   const payload = ApiResponse.ok("User retrieved successfully", user);
   sendResponse(res, httpStatus.OK, payload);
 });
 
 const updateUser: RequestHandler = asyncWrapper(async (req, res) => {
-  const user = await userService.updateUserById(req.params.userId, req.body);
+  const userId = req.params.userId as string;
+  const user = await userService.updateUserById(userId, req.body);
   const payload = ApiResponse.ok("User updated successfully", user);
   sendResponse(res, httpStatus.OK, payload);
 });
 
 const deleteUser: RequestHandler = asyncWrapper(async (req, res) => {
-  await userService.deleteUserById(req.params.userId);
+  const userId = req.params.userId as string;
+  await userService.deleteUserById(userId);
   const payload = ApiResponse.ok("User deleted successfully", null);
   sendResponse(res, httpStatus.OK, payload);
 });

@@ -26,6 +26,20 @@ const updateProfile = {
   body: z
     .object({
       name: z.string().optional(),
+      dob: z.union([z.string(), z.date()]).optional().nullable(),
+      income: z.number().optional(),
+      maritalStatus: z.string().optional().nullable(),
+      martialStatus: z.string().optional().nullable(),
+      motive: z.string().optional().nullable(),
+      spendMostly: z.string().optional().nullable(),
+      spendMostlyOn: z.string().optional().nullable(),
+      avatarUrl: z.string().optional().nullable(),
+      theme: z.string().optional().nullable(),
+      currency: z.string().optional().nullable(),
+      notifications: z.boolean().optional(),
+      biometric: z.boolean().optional(),
+      twoFactor: z.boolean().optional(),
+      aiNudges: z.boolean().optional(),
       newPassword: isPassword.optional(),
       oldPassword: isPassword.optional(),
     })

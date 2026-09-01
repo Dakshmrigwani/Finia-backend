@@ -4,5 +4,6 @@ import emailService from './email.service';
 import authService from './auth.service';
 import budgetService from './budget.service';
 import goalService from './goal.service';
+import transactionService from './transaction.service';
 
-export { userService, tokenService, emailService, authService, budgetService, goalService };
+export { userService, tokenService, emailService, authService, budgetService, goalService, transactionService };

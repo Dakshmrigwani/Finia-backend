@@ -3,7 +3,11 @@ import type { Budget as PrismaBudget } from '@/types';
 import { ApiError } from '@/utils';
 import httpStatus from 'http-status';
 
-const createBudget = async (userId: string, budgetBody: Partial<PrismaBudget>) => {
+const createBudget = async (userId: string, budgetBody: { category: string; amount?: number; limit?: number }) => {
+  if (!budgetBody.category) {
+    throw new ApiError(httpStatus.BAD_REQUEST, 'Category is required');
+  }
+
   // Check if budget for this category already exists for the user
   const existingBudget = await prisma.budget.findFirst({
     where: {
@@ -22,7 +26,9 @@ const createBudget = async (userId: string, budgetBody: Partial<PrismaBudget>) =
   return prisma.budget.create({
     data: {
       userId,
-      ...budgetBody,
+      category: budgetBody.category,
+      amount: budgetBody.amount ?? 0,
+      limit: budgetBody.limit ?? 0,
     },
   });
 };

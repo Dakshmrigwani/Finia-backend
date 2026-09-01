@@ -19,27 +19,30 @@ const getBudgets: RequestHandler = asyncWrapper(async (req, res) => {
 });
 
 const getBudget: RequestHandler = asyncWrapper(async (req, res) => {
-  const budget = await budgetService.getBudgetById(req.params.budgetId);
+  const budgetId = Array.isArray(req.params.budgetId) ? req.params.budgetId[0] : req.params.budgetId;
+  const budget = await budgetService.getBudgetById(budgetId);
   const payload = ApiResponse.ok("Budget retrieved successfully", budget);
   sendResponse(res, httpStatus.OK, payload);
 });
 
 const getBudgetByCategory: RequestHandler = asyncWrapper(async (req, res) => {
   const { id: userId } = (req as AuthedReq).user;
-  const { category } = req.params;
+  const category = Array.isArray(req.params.category) ? req.params.category[0] : req.params.category;
   const budget = await budgetService.getBudgetByCategory(userId, category);
   const payload = ApiResponse.ok("Budget retrieved successfully", budget);
   sendResponse(res, httpStatus.OK, payload);
 });
 
 const updateBudget: RequestHandler = asyncWrapper(async (req, res) => {
-  const budget = await budgetService.updateBudgetById(req.params.budgetId, req.body);
+  const budgetId = Array.isArray(req.params.budgetId) ? req.params.budgetId[0] : req.params.budgetId;
+  const budget = await budgetService.updateBudgetById(budgetId, req.body);
   const payload = ApiResponse.ok("Budget updated successfully", budget);
   sendResponse(res, httpStatus.OK, payload);
 });
 
 const deleteBudget: RequestHandler = asyncWrapper(async (req, res) => {
-  await budgetService.deleteBudgetById(req.params.budgetId);
+  const budgetId = Array.isArray(req.params.budgetId) ? req.params.budgetId[0] : req.params.budgetId;
+  await budgetService.deleteBudgetById(budgetId);
   const payload = ApiResponse.ok("Budget deleted successfully", null);
   sendResponse(res, httpStatus.OK, payload);
 });

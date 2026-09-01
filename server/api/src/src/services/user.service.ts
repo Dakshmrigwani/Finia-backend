@@ -79,16 +79,40 @@ const updatePassword = async (userId: string, requestBody: UpdatePasswordPayload
   return updatedUser;
 };
 
-const updateUserById = async (userId: string, updateBody: Partial<PrismaUser>) => {
+const updateUserById = async (userId: string, updateBody: Record<string, any>) => {
   await getUserById(userId);
 
   if (updateBody.email && (await isEmailTaken(updateBody.email, userId))) {
     throw new ApiError(httpStatus.BAD_REQUEST, 'Email already taken');
   }
 
+  const formattedBody: Record<string, any> = { ...updateBody };
+
+  if (formattedBody.password) {
+    formattedBody.password = await hashPassword(formattedBody.password);
+  }
+
+  if (typeof formattedBody.dob === 'string' && formattedBody.dob.trim()) {
+    formattedBody.dob = new Date(formattedBody.dob);
+  }
+
+  // Handle marital status aliases
+  if (formattedBody.maritalStatus !== undefined && formattedBody.martialStatus === undefined) {
+    formattedBody.martialStatus = formattedBody.maritalStatus;
+  } else if (formattedBody.martialStatus !== undefined && formattedBody.maritalStatus === undefined) {
+    formattedBody.maritalStatus = formattedBody.martialStatus;
+  }
+
+  // Handle spend mostly aliases
+  if (formattedBody.spendMostlyOn !== undefined && formattedBody.spendMostly === undefined) {
+    formattedBody.spendMostly = formattedBody.spendMostlyOn;
+  } else if (formattedBody.spendMostly !== undefined && formattedBody.spendMostlyOn === undefined) {
+    formattedBody.spendMostlyOn = formattedBody.spendMostly;
+  }
+
   const updatedUser = await prisma.user.update({
     where: { id: userId },
-    data: updateBody,
+    data: formattedBody,
     omit: {
       password: true,
     },
