@@ -72,7 +72,6 @@ async def get_current_user(
     Raises:
         AuthenticationError: If token is invalid or user not found.
     """
-    from uuid import UUID
 
     from app.core.security import verify_token
 
@@ -81,14 +80,14 @@ async def get_current_user(
         raise AuthenticationError(message="Invalid or expired token")
 
     # Ensure this is an access token, not a refresh token
-    if payload.get("type") != "access":
+    if payload.get("type") not in ("ACCESS", "access"):
         raise AuthenticationError(message="Invalid token type")
 
     user_id = payload.get("sub")
     if user_id is None:
         raise AuthenticationError(message="Invalid token payload")
 
-    user = await user_service.get_by_id(UUID(user_id))
+    user = await user_service.get_by_id(str(user_id))
     if not user.is_active:
         raise AuthenticationError(message="User account is disabled")
 
@@ -170,7 +169,6 @@ async def get_current_user_ws(
     Raises:
         AuthenticationError: If token is invalid or user not found.
     """
-    from uuid import UUID
 
     from app.core.security import verify_token
 
@@ -186,7 +184,7 @@ async def get_current_user_ws(
         await websocket.close(code=4001, reason="Invalid or expired token")
         raise AuthenticationError(message="Invalid or expired token")
 
-    if payload.get("type") != "access":
+    if payload.get("type") not in ("ACCESS", "access"):
         await websocket.close(code=4001, reason="Invalid token type")
         raise AuthenticationError(message="Invalid token type")
 
@@ -199,7 +197,7 @@ async def get_current_user_ws(
 
     async with get_db_context() as db:
         user_service = UserService(db)
-        user = await user_service.get_by_id(UUID(user_id))
+        user = await user_service.get_by_id(str(user_id))
 
     if not user.is_active:
         await websocket.close(code=4001, reason="User account is disabled")

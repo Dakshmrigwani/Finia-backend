@@ -1,9 +1,12 @@
 import transactionService from '@/services/transaction.service';
+import { importTransactionsFromPdf } from '@/services/transaction-import.service';
 import type { AuthedReq } from '@/types';
-import { ApiResponse, asyncWrapper, sendResponse } from '@/utils';
+import { ApiError, ApiResponse, asyncWrapper, sendResponse } from '@/utils';
 import type { RequestHandler } from 'express';
 import httpStatus from 'http-status';
 import type { GetTransactionsQuery } from '@/services/transaction.service';
+
+// ─── CRUD Handlers ────────────────────────────────────────────────────────────
 
 const createTransaction: RequestHandler = asyncWrapper(async (req, res) => {
   const { id: userId } = (req as AuthedReq).user;
@@ -50,10 +53,36 @@ const deleteTransaction: RequestHandler = asyncWrapper(async (req, res) => {
   sendResponse(res, httpStatus.OK, payload);
 });
 
+// ─── PDF Import ───────────────────────────────────────────────────────────────
+
+/**
+ * POST /transaction/import/pdf
+ *
+ * Accepts a multipart/form-data PDF upload and runs the full import pipeline.
+ * userId is sourced exclusively from the JWT — never from the request body.
+ * Returns an ImportSummary (totalExtracted, inserted, duplicates, failed).
+ */
+const importPdf: RequestHandler = asyncWrapper(async (req, res) => {
+  const { id: userId, currency } = (req as AuthedReq).user;
+
+  // multer places the file at req.file after successful fileFilter validation
+  const file = (req as AuthedReq & { file?: Express.Multer.File }).file;
+  if (!file || !file.buffer || file.buffer.length === 0) {
+    throw new ApiError(httpStatus.BAD_REQUEST, 'No PDF file uploaded or file is empty.');
+  }
+
+  const summary = await importTransactionsFromPdf(userId, file.buffer, currency ?? null);
+  const payload = ApiResponse.ok('PDF import completed', summary);
+  sendResponse(res, httpStatus.OK, payload);
+});
+
+// ─── Exports ─────────────────────────────────────────────────────────────────
+
 export default {
   createTransaction,
   getTransactions,
   getTransaction,
   updateTransaction,
   deleteTransaction,
+  importPdf,
 };

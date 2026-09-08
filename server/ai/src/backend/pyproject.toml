@@ -25,7 +25,7 @@ dependencies = [
     "sentry-sdk[fastapi]>=2.18.0",
     "sqladmin>=0.19.0",
     "itsdangerous>=2.2.0",
-    "pydantic-ai-slim[openrouter]>=0.0.39",
+    "pydantic-ai-slim[groq,openrouter]>=0.0.39",
     "click>=8.1.0",
     "tabulate>=0.9.0",
 ]

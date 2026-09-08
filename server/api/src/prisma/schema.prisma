@@ -40,6 +40,7 @@ model User {
   Token           Token[]
   budgets         Budget[]
   transactions    Transaction[]
+  userContacts    UserContact[]
 
   @@map("users")
 }
@@ -155,6 +156,13 @@ enum TokenType {
 
 // ─── Transaction Enums ───────────────────────────────────────────────────────
 
+enum TransactionSource {
+  PDF
+  SMS
+  BANK_API
+  MANUAL
+}
+
 enum TransactionType {
   FIXED
   RECURRING
@@ -235,6 +243,10 @@ model Transaction {
 
   note        String?              @db.Text
 
+  // Import metadata
+  source      TransactionSource    @default(MANUAL)
+  importFingerprint String?        @unique @map("import_fingerprint")
+
   createdAt   DateTime             @default(now()) @map("created_at")
   updatedAt   DateTime             @updatedAt @map("updated_at")
 
@@ -243,5 +255,39 @@ model Transaction {
   @@index([direction])
   @@index([date])
   @@index([userId, date])
+  @@index([userId, category])
   @@map("transactions")
+}
+
+// ─── Contact Models ───────────────────────────────────────────────────────────
+
+model Contact {
+  id           String        @id @default(uuid())
+  phoneNumber  String        @unique @map("phone_number")
+  name         String?       @db.VarChar(255)
+  sources      String[]      @default([])
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  userContacts UserContact[]
+
+  @@index([phoneNumber])
+  @@map("contacts")
+}
+
+model UserContact {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contactId   String   @map("contact_id")
+  contact     Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  name        String   @db.VarChar(255)
+  phoneNumber String   @map("phone_number") @db.VarChar(50)
+  emails      String[] @default([])
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([userId, phoneNumber])
+  @@index([userId])
+  @@index([phoneNumber])
+  @@map("user_contacts")
 }

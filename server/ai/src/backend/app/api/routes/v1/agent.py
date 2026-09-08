@@ -2,12 +2,13 @@
 """AI Agent WebSocket routes with streaming support (PydanticAI)."""
 
 import logging
-from typing import Any
-from datetime import datetime, UTC
+from collections.abc import AsyncGenerator
+from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from pydantic_ai import (
     Agent,
     FinalResultEvent,
@@ -26,14 +27,65 @@ from pydantic_ai.messages import (
     UserPromptPart,
 )
 
-from app.agents.assistant import Deps, get_agent
+from app.agents.assistant import Deps, financial_agent, get_agent
+from app.api.deps import DBSession, get_conversation_service, get_current_user
+from app.db.models.user import User
 from app.db.session import get_db_context
-from app.api.deps import ConversationSvc, get_conversation_service
-from app.schemas.conversation import ConversationCreate, MessageCreate, ToolCallCreate, ToolCallComplete
+from app.schemas.conversation import (
+    ConversationCreate,
+    MessageCreate,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+class ChatRequest(BaseModel):
+    """Chat request schema."""
+
+    message: str
+
+
+@router.post("/agent/chat")
+@router.post("/chat")
+async def chat(
+    request: ChatRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: DBSession,
+) -> StreamingResponse:
+    """Chat with Finia AI financial coach with SSE response streaming.
+
+    Streams response chunks using Server-Sent Events (SSE) format: 'data: {chunk}\\n\\n'.
+    """
+    deps = {
+        "user_id": str(current_user.id),
+        "db": db,
+    }
+
+    async def event_generator() -> AsyncGenerator[str, None]:
+        try:
+            async with financial_agent.run_stream(
+                request.message,
+                deps=deps,
+            ) as response:
+                async for chunk in response.stream_text(delta=True):
+                    if chunk:
+                        yield f"data: {chunk}\n\n"
+        except Exception as e:
+            logger.exception(f"Error streaming response from financial_agent: {e}")
+            yield f"data: [ERROR] {e!s}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
 
 
 class AgentConnectionManager:

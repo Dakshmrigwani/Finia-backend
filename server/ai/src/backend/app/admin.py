@@ -3,21 +3,19 @@
 
 from typing import Any, ClassVar
 
+from sqladmin import Admin, ModelView
+from sqladmin.authentication import AuthenticationBackend
 from sqlalchemy import String, inspect
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase
-from sqladmin import Admin, ModelView
-from sqladmin.authentication import AuthenticationBackend
 from starlette.requests import Request
 
 from app.core.config import settings
 from app.core.security import verify_password
 from app.db.base import Base
-from app.db.models.user import User
+from app.db.models.conversation import ToolCall
 from app.db.models.session import Session
-from app.db.models.item import Item
-from app.db.models.conversation import Conversation, Message, ToolCall
-
+from app.db.models.user import User
 
 # Columns that should be excluded from forms (sensitive data)
 SENSITIVE_COLUMN_PATTERNS: list[str] = [
@@ -123,10 +121,7 @@ def get_form_excluded_columns(model: type) -> list[str]:
     excluded = []
     for column_name in get_model_columns(model):
         # Exclude sensitive columns
-        if any(pattern in column_name.lower() for pattern in SENSITIVE_COLUMN_PATTERNS):
-            excluded.append(column_name)
-        # Exclude auto-generated columns
-        elif column_name in AUTO_GENERATED_COLUMNS:
+        if any(pattern in column_name.lower() for pattern in SENSITIVE_COLUMN_PATTERNS) or column_name in AUTO_GENERATED_COLUMNS:
             excluded.append(column_name)
     return excluded
 
@@ -361,7 +356,7 @@ class AdminAuth(AuthenticationBackend):
 CUSTOM_MODEL_CONFIGS: dict[type, dict[str, Any]] = {
     User: {
         "icon": "fa-solid fa-user",
-        "form_excluded_columns": [User.hashed_password, User.created_at, User.updated_at],
+        "form_excluded_columns": [User.password, User.created_at, User.updated_at],
     },
     Session: {
         "icon": "fa-solid fa-key",

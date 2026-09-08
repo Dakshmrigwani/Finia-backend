@@ -1,6 +1,7 @@
 import transactionController from '@/controllers/transaction.controller';
 import auth from '@/middlewares/auth';
 import validate from '@/middlewares/validate';
+import { uploadPdf } from '@/middlewares/upload.middleware';
 import transactionValidation from '@/validations/transaction.validation';
 import express from 'express';
 
@@ -102,6 +103,43 @@ const router = express.Router();
  *       200:
  *         description: Paginated list of transactions
  */
+/**
+ * @swagger
+ * /v1/transaction/import/pdf:
+ *   post:
+ *     summary: Import transactions from a bank statement PDF
+ *     tags: [Transaction]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [file]
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: Text-based bank statement PDF (max 10 MB)
+ *     responses:
+ *       200:
+ *         description: Import summary
+ *       400:
+ *         description: Invalid or unreadable PDF
+ *       401:
+ *         description: Unauthorized
+ *       422:
+ *         description: No transactions detected in PDF
+ */
+router.post(
+  '/import/pdf',
+  auth(),
+  uploadPdf.single('file'),
+  transactionController.importPdf,
+);
+
 router
   .route('/')
   .post(auth(), validate(transactionValidation.createTransaction), transactionController.createTransaction)

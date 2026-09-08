@@ -13,9 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.user import User
 
 
-async def get_by_id(db: AsyncSession, user_id: UUID) -> User | None:
+async def get_by_id(db: AsyncSession, user_id: UUID | str) -> User | None:
     """Get user by ID."""
-    return await db.get(User, user_id)
+    return await db.get(User, str(user_id))
 
 
 async def get_by_email(db: AsyncSession, email: str) -> User | None:

@@ -3,6 +3,7 @@
 
 from pathlib import Path
 from typing import Literal
+from urllib.parse import quote_plus
 
 from pydantic import computed_field, field_validator, ValidationInfo
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -49,19 +50,19 @@ class Settings(BaseSettings):
     @property
     def DATABASE_URL(self) -> str:
         """Build async PostgreSQL connection URL."""
-        return (
-            f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
-            f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
-        )
+        user = quote_plus(self.POSTGRES_USER) if self.POSTGRES_USER else ""
+        password = quote_plus(self.POSTGRES_PASSWORD) if self.POSTGRES_PASSWORD else ""
+        auth = f"{user}:{password}@" if user or password else ""
+        return f"postgresql+asyncpg://{auth}{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def DATABASE_URL_SYNC(self) -> str:
         """Build sync PostgreSQL connection URL (for Alembic)."""
-        return (
-            f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
-            f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
-        )
+        user = quote_plus(self.POSTGRES_USER) if self.POSTGRES_USER else ""
+        password = quote_plus(self.POSTGRES_PASSWORD) if self.POSTGRES_PASSWORD else ""
+        auth = f"{user}:{password}@" if user or password else ""
+        return f"postgresql://{auth}{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
     # Pool configuration
     DB_POOL_SIZE: int = 5
@@ -94,12 +95,13 @@ class Settings(BaseSettings):
     # === Sentry ===
     SENTRY_DSN: str | None = None
 
-    # === AI Agent (pydantic_ai, openrouter) ===
+    # === AI Agent (pydantic_ai, groq, openrouter) ===
+    GROQ_API_KEY: str = ""
     OPENROUTER_API_KEY: str = ""
     AI_MODEL: str = "anthropic/claude-3.5-sonnet"
     AI_TEMPERATURE: float = 0.7
     AI_FRAMEWORK: str = "pydantic_ai"
-    LLM_PROVIDER: str = "openrouter"
+    LLM_PROVIDER: str = "groq"
 
     # === CORS ===
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:8080"]

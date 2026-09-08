@@ -21,7 +21,7 @@ class UserService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def get_by_id(self, user_id: UUID) -> User:
+    async def get_by_id(self, user_id: UUID | str) -> User:
         """Get user by ID.
 
         Raises:
@@ -31,7 +31,7 @@ class UserService:
         if not user:
             raise NotFoundError(
                 message="User not found",
-                details={"user_id": user_id},
+                details={"user_id": str(user_id)},
             )
         return user
 
