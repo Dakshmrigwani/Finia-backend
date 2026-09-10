@@ -5,6 +5,8 @@ from app.db.models.session import Session
 from app.db.models.item import Item
 from app.db.models.conversation import Conversation, Message, ToolCall
 from app.db.models.transaction import Transaction
+from app.db.models.budget import Budget
+from app.db.models.goal import Goal
 
-__all__ = ['User', 'Session', 'Item', 'Conversation', 'Message', 'ToolCall', 'Transaction']
+__all__ = ['User', 'Session', 'Item', 'Conversation', 'Message', 'ToolCall', 'Transaction', 'Budget', 'Goal']
 

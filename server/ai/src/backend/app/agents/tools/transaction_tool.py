@@ -70,7 +70,7 @@ async def get_spending_summary(
     user_id = str(ctx.deps["user_id"])
     db: AsyncSession = ctx.deps["db"]
 
-    start_date = datetime.utcnow() - timedelta(days=days)
+    start_date = datetime.now() - timedelta(days=days)
 
     query = select(
         Transaction.direction,
@@ -127,7 +127,7 @@ async def get_category_spending(
     db: AsyncSession = ctx.deps["db"]
 
     cat_upper = category.strip().upper()
-    start_date = datetime.utcnow() - timedelta(days=days)
+    start_date = datetime.now() - timedelta(days=days)
 
     query = (
         select(Transaction)
