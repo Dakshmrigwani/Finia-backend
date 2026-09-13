@@ -1,5 +1,3 @@
-"""FastAPI application entry point."""
-
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -25,8 +23,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     setup_logfire()
     from app.core.logfire_setup import instrument_asyncpg
     instrument_asyncpg()
-    from app.core.logfire_setup import instrument_pydantic_ai
-    instrument_pydantic_ai()
 
     yield
 
@@ -88,7 +84,7 @@ My FastAPI project
 ## Features
 - **Authentication**: JWT-based authentication with refresh tokens
 - **Database**: Async database operations
-- **AI Agent**: PydanticAI-powered conversational assistant
+- **AI Agent**: LangChain + LangGraph conversational assistant with LangSmith tracing
 - **Observability**: Logfire integration for tracing and monitoring
 
 ## Documentation

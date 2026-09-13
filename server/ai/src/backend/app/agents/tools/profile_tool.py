@@ -1,20 +1,23 @@
 """User profile tool for financial coaching agent."""
 
-from pydantic_ai import RunContext
+from typing import Annotated
+
+from langchain_core.tools import InjectedToolArg, tool
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.user import User
 
 
-async def get_user_profile(ctx: RunContext[dict]) -> dict:
+@tool
+async def get_user_profile(
+    user_id: Annotated[str, InjectedToolArg],
+    db: Annotated[AsyncSession, InjectedToolArg],
+) -> dict:
     """Get user financial profile including income, currency, motive, and spending habits.
 
     Reads the user profile from the database using the provided user_id and db session.
     """
-    user_id = ctx.deps["user_id"]
-    db: AsyncSession = ctx.deps["db"]
-
     user_id_str = str(user_id)
 
     result = await db.execute(select(User).where(User.id == user_id_str))

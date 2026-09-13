@@ -1,6 +1,6 @@
+"""AI Agent WebSocket routes with streaming support (LangChain + LangGraph)."""
 
-"""AI Agent WebSocket routes with streaming support (PydanticAI)."""
-
+import json
 import logging
 import time
 from collections.abc import AsyncGenerator
@@ -10,24 +10,8 @@ from uuid import UUID
 import logfire
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel
-from pydantic_ai import (
-    Agent,
-    FinalResultEvent,
-    FunctionToolCallEvent,
-    FunctionToolResultEvent,
-    PartDeltaEvent,
-    PartStartEvent,
-    TextPartDelta,
-    ToolCallPartDelta,
-)
-from pydantic_ai.messages import (
-    ModelRequest,
-    ModelResponse,
-    SystemPromptPart,
-    TextPart,
-    UserPromptPart,
-)
 from sqlalchemy import select
 
 from app.agents.assistant import financial_agent
@@ -50,6 +34,24 @@ class ChatRequest(BaseModel):
     message: str
 
 
+def build_message_history(history: list[dict[str, str]]) -> list[HumanMessage | AIMessage | SystemMessage]:
+    """Convert conversation history to LangChain message format."""
+    messages: list[HumanMessage | AIMessage | SystemMessage] = []
+    for msg in history:
+        if msg["role"] == "user":
+            messages.append(HumanMessage(content=msg["content"]))
+        elif msg["role"] == "assistant":
+            messages.append(AIMessage(content=msg["content"]))
+        elif msg["role"] == "system":
+            messages.append(SystemMessage(content=msg["content"]))
+    return messages
+
+
+def _make_tool_kwargs(user_id: str, db: Any) -> dict[str, Any]:
+    """Build the injected tool arguments dict passed to every tool call."""
+    return {"user_id": user_id, "db": db}
+
+
 @router.post("/agent/chat")
 @router.post("/chat")
 async def chat(
@@ -61,20 +63,21 @@ async def chat(
 
     Streams response chunks using Server-Sent Events (SSE) format: 'data: {chunk}\\n\\n'.
     """
-    deps = {
-        "user_id": str(current_user.id),
-        "db": db,
-    }
+    tool_kwargs = _make_tool_kwargs(str(current_user.id), db)
+    input_messages = {"messages": [HumanMessage(content=request.message)]}
 
     async def event_generator() -> AsyncGenerator[str, None]:
         try:
-            async with financial_agent.run_stream(
-                request.message,
-                deps=deps,
-            ) as response:
-                async for chunk in response.stream_text(delta=True):
-                    if chunk:
-                        yield f"data: {chunk}\n\n"
+            async for event in financial_agent.astream_events(
+                input_messages,
+                version="v2",
+                config={"configurable": tool_kwargs},
+            ):
+                kind = event["event"]
+                if kind == "on_chat_model_stream":
+                    chunk = event["data"].get("chunk")
+                    if chunk and hasattr(chunk, "content") and chunk.content:
+                        yield f"data: {chunk.content}\n\n"
         except Exception as e:
             logger.exception(f"Error streaming response from financial_agent: {e}")
             yield f"data: [ERROR] {e!s}\n\n"
@@ -90,6 +93,7 @@ async def chat(
     )
 
 
+# ── WebSocket connection manager ───────────────────────────────────────────────
 
 class AgentConnectionManager:
     """WebSocket connection manager for AI agent."""
@@ -118,27 +122,10 @@ class AgentConnectionManager:
             await websocket.send_json({"type": event_type, "data": data})
             return True
         except (WebSocketDisconnect, RuntimeError):
-            # Connection already closed
             return False
 
 
 manager = AgentConnectionManager()
-
-
-def build_message_history(history: list[dict[str, str]]) -> list[ModelRequest | ModelResponse]:
-    """Convert conversation history to PydanticAI message format."""
-    model_history: list[ModelRequest | ModelResponse] = []
-
-    for msg in history:
-        if msg["role"] == "user":
-            model_history.append(ModelRequest(parts=[UserPromptPart(content=msg["content"])]))
-        elif msg["role"] == "assistant":
-            model_history.append(ModelResponse(parts=[TextPart(content=msg["content"])]))
-        elif msg["role"] == "system":
-            model_history.append(ModelRequest(parts=[SystemPromptPart(content=msg["content"])]))
-
-    return model_history
-
 
 TOOL_LABELS: dict[str, str] = {
     "get_recent_transactions": "Checking your recent transactions...",
@@ -147,7 +134,7 @@ TOOL_LABELS: dict[str, str] = {
     "get_user_profile": "Reviewing your financial profile...",
     "get_budgets": "Checking your budgets and spending limits...",
     "get_goals": "Reviewing your savings and financial goals...",
-    "current_datetime": "Checking current date and time...",
+    "get_current_datetime": "Checking current date and time...",
 }
 
 
@@ -157,14 +144,13 @@ async def agent_websocket(
 ) -> None:
     """WebSocket endpoint for AI agent with full event streaming and timing instrumentation.
 
-    Uses PydanticAI iter() on financial_agent to stream all agent events including:
+    Uses LangGraph astream_events (v2) to stream all agent events including:
     - user_prompt: When user input is received
-    - model_request_start: When model request begins
-    - text_delta: Streaming text from the model
-    - tool_call_delta: Streaming tool call arguments
-    - tool_call: When a tool is called (with full args & human-readable status label)
-    - tool_result: When a tool returns a result (with execution duration)
-    - final_result: When the final result is ready
+    - model_request_start: When model request begins (on_chat_model_start)
+    - text_delta: Streaming text from the model (on_chat_model_stream)
+    - tool_call: When a tool is called (on_tool_start)
+    - tool_result: When a tool returns a result (on_tool_end)
+    - final_result: When the final result is ready (on_chain_end for agent)
     - complete: When processing is complete (with latency metrics)
     - error: When an error occurs
 
@@ -176,16 +162,13 @@ async def agent_websocket(
         "user_id": "optional-user-uuid"
     }
     """
-
     await manager.connect(websocket)
 
-    # Conversation state per connection
     conversation_history: list[dict[str, str]] = []
     current_conversation_id: str | None = None
 
     try:
         while True:
-            # Receive user message
             data = await websocket.receive_json()
             t_recv = time.perf_counter()
             user_message = data.get("message", "")
@@ -233,201 +216,161 @@ async def agent_websocket(
 
                     await manager.send_event(websocket, "user_prompt", {"content": user_message})
 
+                    # Build message history for LangGraph
+                    lc_history = build_message_history(conversation_history)
+                    all_messages = lc_history + [HumanMessage(content=user_message)]
+
+                    tool_kwargs = _make_tool_kwargs(str(user_id) if user_id else "", db)
+
                     # Timing trackers
                     t_model_start: float | None = None
                     tool_start_times: dict[str, tuple[str, float]] = {}
                     last_tool_result_time: float | None = None
                     t_first_text_delta: float | None = None
+                    final_output: str = ""
 
-                    model_history = build_message_history(conversation_history)
-                    deps = {
-                        "user_id": str(user_id) if user_id else None,
-                        "db": db,
-                    }
+                    # Stream events from LangGraph
+                    async for event in financial_agent.astream_events(
+                        {"messages": all_messages},
+                        version="v2",
+                        config={"configurable": tool_kwargs},
+                    ):
+                        kind = event["event"]
+                        name = event.get("name", "")
 
-                    # Stream using financial_agent
-                    async with financial_agent.iter(
-                        user_message,
-                        deps=deps,
-                        message_history=model_history,
-                    ) as agent_run:
-                        async for node in agent_run:
-                            if Agent.is_user_prompt_node(node):
+                        # ── Model starts generating ────────────────────────────
+                        if kind == "on_chat_model_start":
+                            if t_model_start is None:
+                                t_model_start = time.perf_counter()
+                                dur_to_model = t_model_start - t_recv
+                                logger.info(
+                                    f"[TIMING 1] Message received -> model_request_start: "
+                                    f"{dur_to_model:.3f}s ({dur_to_model * 1000:.1f}ms)"
+                                )
+                                logfire.info(
+                                    "Agent model_request_start reached in {duration:.3f}s",
+                                    duration=dur_to_model,
+                                )
+                            await manager.send_event(websocket, "model_request_start", {})
+
+                        # ── Streaming text delta ───────────────────────────────
+                        elif kind == "on_chat_model_stream":
+                            chunk = event["data"].get("chunk")
+                            if chunk and hasattr(chunk, "content") and chunk.content:
+                                if t_first_text_delta is None:
+                                    t_first_text_delta = time.perf_counter()
+                                    if last_tool_result_time is not None:
+                                        dur_tool_to_text = t_first_text_delta - last_tool_result_time
+                                        logger.info(
+                                            f"[TIMING 3] Final tool_result -> first text_delta: "
+                                            f"{dur_tool_to_text:.3f}s ({dur_tool_to_text * 1000:.1f}ms)"
+                                        )
+                                        logfire.info(
+                                            "Agent tool_result to first text_delta: {duration:.3f}s",
+                                            duration=dur_tool_to_text,
+                                        )
+                                final_output += chunk.content
                                 await manager.send_event(
                                     websocket,
-                                    "user_prompt_processed",
-                                    {"prompt": node.user_prompt},
+                                    "text_delta",
+                                    {"content": chunk.content},
                                 )
 
-                            elif Agent.is_model_request_node(node):
-                                if t_model_start is None:
-                                    t_model_start = time.perf_counter()
-                                    dur_to_model = t_model_start - t_recv
-                                    logger.info(
-                                        f"[TIMING 1] Message received -> model_request_start: "
-                                        f"{dur_to_model:.3f}s ({dur_to_model * 1000:.1f}ms)"
-                                    )
-                                    logfire.info(
-                                        "Agent model_request_start reached in {duration:.3f}s",
-                                        duration=dur_to_model,
-                                    )
+                        # ── Tool call begins ───────────────────────────────────
+                        elif kind == "on_tool_start":
+                            t_call = time.perf_counter()
+                            tool_name = name
+                            tool_call_id = event.get("run_id", tool_name)
+                            tool_start_times[tool_call_id] = (tool_name, t_call)
+                            label = TOOL_LABELS.get(tool_name, f"Running {tool_name}...")
+                            raw_input = event["data"].get("input", {})
+                            args_str = (
+                                json.dumps(raw_input)
+                                if isinstance(raw_input, dict)
+                                else str(raw_input)
+                            )
+                            logger.info(
+                                f"[TOOL CALL] {tool_name} called at "
+                                f"{t_call - t_recv:.3f}s from message receive"
+                            )
+                            await manager.send_event(
+                                websocket,
+                                "tool_call",
+                                {
+                                    "tool_name": tool_name,
+                                    "label": label,
+                                    "args": args_str,
+                                    "tool_call_id": tool_call_id,
+                                },
+                            )
 
-                                await manager.send_event(websocket, "model_request_start", {})
-
-                                async with node.stream(agent_run.ctx) as request_stream:
-                                    async for event in request_stream:
-                                        if isinstance(event, PartStartEvent):
-                                            await manager.send_event(
-                                                websocket,
-                                                "part_start",
-                                                {
-                                                    "index": event.index,
-                                                    "part_type": type(event.part).__name__,
-                                                },
-                                            )
-                                            if isinstance(event.part, TextPart) and event.part.content:
-                                                if t_first_text_delta is None:
-                                                    t_first_text_delta = time.perf_counter()
-                                                    if last_tool_result_time is not None:
-                                                        dur_tool_to_text = t_first_text_delta - last_tool_result_time
-                                                        logger.info(
-                                                            f"[TIMING 3] Final tool_result -> first text_delta: "
-                                                            f"{dur_tool_to_text:.3f}s ({dur_tool_to_text * 1000:.1f}ms)"
-                                                        )
-                                                        logfire.info(
-                                                            "Agent tool_result to first text_delta: {duration:.3f}s",
-                                                            duration=dur_tool_to_text,
-                                                        )
-                                                await manager.send_event(
-                                                    websocket,
-                                                    "text_delta",
-                                                    {
-                                                        "index": event.index,
-                                                        "content": event.part.content,
-                                                    },
-                                                )
-
-                                        elif isinstance(event, PartDeltaEvent):
-                                            if isinstance(event.delta, TextPartDelta):
-                                                if t_first_text_delta is None:
-                                                    t_first_text_delta = time.perf_counter()
-                                                    if last_tool_result_time is not None:
-                                                        dur_tool_to_text = t_first_text_delta - last_tool_result_time
-                                                        logger.info(
-                                                            f"[TIMING 3] Final tool_result -> first text_delta: "
-                                                            f"{dur_tool_to_text:.3f}s ({dur_tool_to_text * 1000:.1f}ms)"
-                                                        )
-                                                        logfire.info(
-                                                            "Agent tool_result to first text_delta: {duration:.3f}s",
-                                                            duration=dur_tool_to_text,
-                                                        )
-                                                await manager.send_event(
-                                                    websocket,
-                                                    "text_delta",
-                                                    {
-                                                        "index": event.index,
-                                                        "content": event.delta.content_delta,
-                                                    },
-                                                )
-                                            elif isinstance(event.delta, ToolCallPartDelta):
-                                                await manager.send_event(
-                                                    websocket,
-                                                    "tool_call_delta",
-                                                    {
-                                                        "index": event.index,
-                                                        "args_delta": event.delta.args_delta,
-                                                    },
-                                                )
-
-                                        elif isinstance(event, FinalResultEvent):
-                                            await manager.send_event(
-                                                websocket,
-                                                "final_result_start",
-                                                {"tool_name": event.tool_name},
-                                            )
-
-                            elif Agent.is_call_tools_node(node):
-                                await manager.send_event(websocket, "call_tools_start", {})
-
-                                async with node.stream(agent_run.ctx) as handle_stream:
-                                    async for event in handle_stream:
-                                        if isinstance(event, FunctionToolCallEvent):
-                                            t_call = time.perf_counter()
-                                            tool_name = event.part.tool_name
-                                            tool_start_times[event.part.tool_call_id] = (tool_name, t_call)
-                                            label = TOOL_LABELS.get(tool_name, f"Running {tool_name}...")
-                                            logger.info(
-                                                f"[TOOL CALL] {tool_name} called at "
-                                                f"{t_call - t_recv:.3f}s from message receive"
-                                            )
-                                            await manager.send_event(
-                                                websocket,
-                                                "tool_call",
-                                                {
-                                                    "tool_name": tool_name,
-                                                    "label": label,
-                                                    "args": event.part.args,
-                                                    "tool_call_id": event.part.tool_call_id,
-                                                },
-                                            )
-
-                                        elif isinstance(event, FunctionToolResultEvent):
-                                            t_res = time.perf_counter()
-                                            last_tool_result_time = t_res
-                                            tool_info = tool_start_times.get(event.tool_call_id)
-                                            tool_dur = (t_res - tool_info[1]) if tool_info else None
-                                            tool_name = tool_info[0] if tool_info else "unknown"
-                                            if tool_dur is not None:
-                                                logger.info(
-                                                    f"[TIMING 2] Tool execution [{tool_name}]: "
-                                                    f"{tool_dur:.3f}s ({tool_dur * 1000:.1f}ms)"
-                                                )
-                                                logfire.info(
-                                                    "Tool {tool_name} executed in {duration:.3f}s",
-                                                    tool_name=tool_name,
-                                                    duration=tool_dur,
-                                                )
-
-                                            result_content = (
-                                                str(event.content)
-                                                if hasattr(event, "content")
-                                                else str(getattr(getattr(event, "result", None), "content", ""))
-                                            )
-                                            await manager.send_event(
-                                                websocket,
-                                                "tool_result",
-                                                {
-                                                    "tool_call_id": event.tool_call_id,
-                                                    "content": result_content,
-                                                    "duration_ms": (
-                                                        round(tool_dur * 1000, 2) if tool_dur is not None else None
-                                                    ),
-                                                },
-                                            )
-
-                            elif Agent.is_end_node(node) and agent_run.result is not None:
-                                await manager.send_event(
-                                    websocket,
-                                    "final_result",
-                                    {"output": agent_run.result.output},
+                        # ── Tool call returns ──────────────────────────────────
+                        elif kind == "on_tool_end":
+                            t_res = time.perf_counter()
+                            last_tool_result_time = t_res
+                            tool_call_id = event.get("run_id", name)
+                            tool_info = tool_start_times.get(tool_call_id)
+                            tool_dur = (t_res - tool_info[1]) if tool_info else None
+                            tool_name = tool_info[0] if tool_info else name
+                            if tool_dur is not None:
+                                logger.info(
+                                    f"[TIMING 2] Tool execution [{tool_name}]: "
+                                    f"{tool_dur:.3f}s ({tool_dur * 1000:.1f}ms)"
                                 )
+                                logfire.info(
+                                    "Tool {tool_name} executed in {duration:.3f}s",
+                                    tool_name=tool_name,
+                                    duration=tool_dur,
+                                )
+                            output = event["data"].get("output")
+                            result_content = (
+                                output.content
+                                if hasattr(output, "content")
+                                else str(output)
+                            )
+                            await manager.send_event(
+                                websocket,
+                                "tool_result",
+                                {
+                                    "tool_call_id": tool_call_id,
+                                    "content": result_content,
+                                    "duration_ms": (
+                                        round(tool_dur * 1000, 2) if tool_dur is not None else None
+                                    ),
+                                },
+                            )
 
-                    # Update conversation history
+                        # ── Agent chain ends (final answer ready) ─────────────
+                        elif kind == "on_chain_end" and name == "LangGraph":
+                            output_messages = (
+                                event["data"].get("output", {}).get("messages", [])
+                            )
+                            if output_messages:
+                                last_msg = output_messages[-1]
+                                if hasattr(last_msg, "content") and last_msg.content:
+                                    final_output = last_msg.content
+                            await manager.send_event(
+                                websocket,
+                                "final_result",
+                                {"output": final_output},
+                            )
+
+                    # Update in-memory conversation history
                     conversation_history.append({"role": "user", "content": user_message})
-                    if agent_run.result:
+                    if final_output:
                         conversation_history.append(
-                            {"role": "assistant", "content": agent_run.result.output}
+                            {"role": "assistant", "content": final_output}
                         )
 
-                    # Save assistant response to database
-                    if current_conversation_id and agent_run.result:
+                    # Persist assistant response
+                    if current_conversation_id and final_output:
                         try:
                             await conv_service.add_message(
                                 UUID(current_conversation_id),
                                 MessageCreate(
                                     role="assistant",
-                                    content=agent_run.result.output,
-                                    model_name=str(financial_agent.model),
+                                    content=final_output,
+                                    model_name=str(financial_agent.get_graph().name or "finia-agent"),
                                 ),
                             )
                         except Exception as e:

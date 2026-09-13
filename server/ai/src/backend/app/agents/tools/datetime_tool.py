@@ -1,9 +1,11 @@
-
 """Date and time utilities for agents."""
 
 from datetime import datetime
 
+from langchain_core.tools import tool
 
+
+@tool
 def get_current_datetime() -> str:
     """Get the current date and time.
 

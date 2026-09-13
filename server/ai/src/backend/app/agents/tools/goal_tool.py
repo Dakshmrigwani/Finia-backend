@@ -1,16 +1,19 @@
 """Goal inquiry and savings progress tools for Finia Coach AI Agent."""
 
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic_ai import RunContext
+from langchain_core.tools import InjectedToolArg, tool
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.goal import Goal
 
 
+@tool
 async def get_goals(
-    ctx: RunContext[dict], status: str | None = None
+    user_id: Annotated[str, InjectedToolArg],
+    db: Annotated[AsyncSession, InjectedToolArg],
+    status: str | None = None,
 ) -> list[dict[str, Any]]:
     """Retrieve the user's savings and financial goals with progress.
 
@@ -21,17 +24,15 @@ async def get_goals(
     - 'Can I afford this while still meeting my goal?'
 
     Args:
-        ctx: RunContext containing user_id and db session in ctx.deps.
         status: Optional status filter ('ACTIVE', 'COMPLETED', 'ARCHIVED'). Defaults to all goals if not provided.
 
     Returns:
         List of goals containing name, type, target_amount, current_saved_amount,
         remaining_amount, progress_percentage, target_date, status, and smart_saver_enabled.
     """
-    user_id = str(ctx.deps["user_id"])
-    db: AsyncSession = ctx.deps["db"]
+    uid = str(user_id)
 
-    query = select(Goal).where(Goal.user_id == user_id)
+    query = select(Goal).where(Goal.user_id == uid)
 
     if status:
         query = query.where(Goal.status == status.strip().upper())

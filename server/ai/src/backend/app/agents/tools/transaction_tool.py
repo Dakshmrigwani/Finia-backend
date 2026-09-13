@@ -1,17 +1,20 @@
 """Transaction inquiry and spending aggregation tools for Finia Coach AI Agent."""
 
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic_ai import RunContext
+from langchain_core.tools import InjectedToolArg, tool
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.transaction import Transaction
 
 
+@tool
 async def get_recent_transactions(
-    ctx: RunContext[dict], limit: int = 10
+    user_id: Annotated[str, InjectedToolArg],
+    db: Annotated[AsyncSession, InjectedToolArg],
+    limit: int = 10,
 ) -> list[dict[str, Any]]:
     """Retrieve the user's most recent transactions.
 
@@ -19,19 +22,17 @@ async def get_recent_transactions(
     or recent activity in their account.
 
     Args:
-        ctx: RunContext containing user_id and db session in ctx.deps.
         limit: Maximum number of transactions to return (default 10, max 50).
 
     Returns:
         List of transactions with date, title, amount, category, direction, and type.
     """
-    user_id = str(ctx.deps["user_id"])
-    db: AsyncSession = ctx.deps["db"]
+    uid = str(user_id)
     safe_limit = min(max(1, limit), 50)
 
     query = (
         select(Transaction)
-        .where(Transaction.user_id == user_id)
+        .where(Transaction.user_id == uid)
         .order_by(Transaction.date.desc())
         .limit(safe_limit)
     )
@@ -53,33 +54,38 @@ async def get_recent_transactions(
     ]
 
 
+@tool
 async def get_spending_summary(
-    ctx: RunContext[dict], days: int = 30
+    user_id: Annotated[str, InjectedToolArg],
+    db: Annotated[AsyncSession, InjectedToolArg],
+    days: int = 30,
 ) -> dict[str, Any]:
     """Get aggregated spending summary for the user over the last N days.
 
     Calculates total expenses, total income, net savings/deficit, and transaction counts.
 
     Args:
-        ctx: RunContext containing user_id and db session in ctx.deps.
         days: Lookback period in days (default 30 days).
 
     Returns:
         Dictionary containing total_expense, total_income, net_flow, and transaction_count.
     """
-    user_id = str(ctx.deps["user_id"])
-    db: AsyncSession = ctx.deps["db"]
+    uid = str(user_id)
 
     start_date = datetime.now() - timedelta(days=days)
 
-    query = select(
-        Transaction.direction,
-        func.sum(Transaction.amount).label("total"),
-        func.count(Transaction.id).label("count"),
-    ).where(
-        Transaction.user_id == user_id,
-        Transaction.date >= start_date,
-    ).group_by(Transaction.direction)
+    query = (
+        select(
+            Transaction.direction,
+            func.sum(Transaction.amount).label("total"),
+            func.count(Transaction.id).label("count"),
+        )
+        .where(
+            Transaction.user_id == uid,
+            Transaction.date >= start_date,
+        )
+        .group_by(Transaction.direction)
+    )
 
     result = await db.execute(query)
     rows = result.all()
@@ -106,8 +112,12 @@ async def get_spending_summary(
     }
 
 
+@tool
 async def get_category_spending(
-    ctx: RunContext[dict], category: str, days: int = 30
+    user_id: Annotated[str, InjectedToolArg],
+    db: Annotated[AsyncSession, InjectedToolArg],
+    category: str = "",
+    days: int = 30,
 ) -> dict[str, Any]:
     """Get total amount spent on a specific category over a time period.
 
@@ -116,23 +126,20 @@ async def get_category_spending(
     - 'What were my shopping expenses over the last 30 days?'
 
     Args:
-        ctx: RunContext containing user_id and db session in ctx.deps.
         category: Category name e.g. 'FOOD', 'SHOPPING', 'ENTERTAINMENT', 'TRAVEL'.
         days: Lookback period in days (default 30 days).
 
     Returns:
         Dictionary with category name, total_spent, and list of matching transactions.
     """
-    user_id = str(ctx.deps["user_id"])
-    db: AsyncSession = ctx.deps["db"]
-
+    uid = str(user_id)
     cat_upper = category.strip().upper()
     start_date = datetime.now() - timedelta(days=days)
 
     query = (
         select(Transaction)
         .where(
-            Transaction.user_id == user_id,
+            Transaction.user_id == uid,
             func.upper(Transaction.category) == cat_upper,
             Transaction.date >= start_date,
         )

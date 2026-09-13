@@ -95,13 +95,18 @@ class Settings(BaseSettings):
     # === Sentry ===
     SENTRY_DSN: str | None = None
 
-    # === AI Agent (pydantic_ai, groq, openrouter) ===
+    # === AI Agent (LangChain + LangGraph + LangSmith) ===
     GROQ_API_KEY: str = ""
     OPENROUTER_API_KEY: str = ""
-    AI_MODEL: str = "anthropic/claude-3.5-sonnet"
+    AI_MODEL: str = "llama-3.3-70b-versatile"
     AI_TEMPERATURE: float = 0.7
-    AI_FRAMEWORK: str = "pydantic_ai"
     LLM_PROVIDER: str = "groq"
+
+    # === LangSmith tracing (opt-in) ===
+    LANGCHAIN_API_KEY: str = ""
+    LANGCHAIN_TRACING_V2: bool = False
+    LANGCHAIN_PROJECT: str = "finia-agent"
+    LANGCHAIN_ENDPOINT: str = "https://api.smith.langchain.com"
 
     # === CORS ===
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:8080"]

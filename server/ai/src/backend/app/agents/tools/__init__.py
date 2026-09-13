@@ -1,8 +1,7 @@
-
 """Agent tools module.
 
-This module contains utility functions that can be used as agent tools.
-Tools are registered in the agent definition using @agent.tool decorator.
+This module contains utility functions registered as LangChain tools.
+Tools use InjectedToolArg for context (user_id, db) that is hidden from the LLM schema.
 """
 
 from app.agents.tools.budget_tool import get_budgets
@@ -24,4 +23,3 @@ __all__ = [
     "get_spending_summary",
     "get_user_profile",
 ]
-

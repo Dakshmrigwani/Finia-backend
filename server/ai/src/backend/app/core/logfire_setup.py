@@ -25,7 +25,3 @@ def instrument_asyncpg():
     """Instrument asyncpg for PostgreSQL."""
     logfire.instrument_asyncpg()
 
-
-def instrument_pydantic_ai():
-    """Instrument PydanticAI for AI agent observability."""
-    logfire.instrument_pydantic_ai()

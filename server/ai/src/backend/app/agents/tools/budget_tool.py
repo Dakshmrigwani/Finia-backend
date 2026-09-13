@@ -1,16 +1,19 @@
 """Budget inquiry tools for Finia Coach AI Agent."""
 
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic_ai import RunContext
+from langchain_core.tools import InjectedToolArg, tool
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.budget import Budget
 
 
+@tool
 async def get_budgets(
-    ctx: RunContext[dict], category: str | None = None
+    user_id: Annotated[str, InjectedToolArg],
+    db: Annotated[AsyncSession, InjectedToolArg],
+    category: str | None = None,
 ) -> list[dict[str, Any]]:
     """Retrieve the user's category budgets, limits, and current spend.
 
@@ -21,17 +24,15 @@ async def get_budgets(
     - 'Show my category spending limits.'
 
     Args:
-        ctx: RunContext containing user_id and db session in ctx.deps.
         category: Optional category name to filter (e.g. 'FOOD', 'SHOPPING', 'UTILITIES').
 
     Returns:
         List of budgets containing category, limit, current_spend, remaining,
         percentage_used, and budget status ('ON_TRACK', 'WARNING', 'OVER_BUDGET').
     """
-    user_id = str(ctx.deps["user_id"])
-    db: AsyncSession = ctx.deps["db"]
+    uid = str(user_id)
 
-    query = select(Budget).where(Budget.user_id == user_id)
+    query = select(Budget).where(Budget.user_id == uid)
 
     if category:
         cat_clean = category.strip().upper()
