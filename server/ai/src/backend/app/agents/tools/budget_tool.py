@@ -1,20 +1,16 @@
 """Budget inquiry tools for Finia Coach AI Agent."""
 
-from typing import Annotated, Any
+from typing import Any
 
-from langchain_core.tools import InjectedToolArg, tool
+from langchain_core.tools import tool
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.context import get_db, get_user_id
 from app.db.models.budget import Budget
 
 
 @tool
-async def get_budgets(
-    user_id: Annotated[str, InjectedToolArg],
-    db: Annotated[AsyncSession, InjectedToolArg],
-    category: str | None = None,
-) -> list[dict[str, Any]]:
+async def get_budgets(category: str | None = None) -> list[dict[str, Any]]:
     """Retrieve the user's category budgets, limits, and current spend.
 
     Use this tool when the user asks:
@@ -30,9 +26,10 @@ async def get_budgets(
         List of budgets containing category, limit, current_spend, remaining,
         percentage_used, and budget status ('ON_TRACK', 'WARNING', 'OVER_BUDGET').
     """
-    uid = str(user_id)
+    user_id = get_user_id()
+    db = get_db()
 
-    query = select(Budget).where(Budget.user_id == uid)
+    query = select(Budget).where(Budget.user_id == user_id)
 
     if category:
         cat_clean = category.strip().upper()

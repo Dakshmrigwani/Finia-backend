@@ -1,21 +1,17 @@
 """Transaction inquiry and spending aggregation tools for Finia Coach AI Agent."""
 
 from datetime import datetime, timedelta
-from typing import Annotated, Any
+from typing import Any
 
-from langchain_core.tools import InjectedToolArg, tool
+from langchain_core.tools import tool
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.context import get_db, get_user_id
 from app.db.models.transaction import Transaction
 
 
 @tool
-async def get_recent_transactions(
-    user_id: Annotated[str, InjectedToolArg],
-    db: Annotated[AsyncSession, InjectedToolArg],
-    limit: int = 10,
-) -> list[dict[str, Any]]:
+async def get_recent_transactions(limit: int = 10) -> list[dict[str, Any]]:
     """Retrieve the user's most recent transactions.
 
     Use this tool when the user asks about recent purchases, recent expenses,
@@ -27,12 +23,13 @@ async def get_recent_transactions(
     Returns:
         List of transactions with date, title, amount, category, direction, and type.
     """
-    uid = str(user_id)
+    user_id = get_user_id()
+    db = get_db()
     safe_limit = min(max(1, limit), 50)
 
     query = (
         select(Transaction)
-        .where(Transaction.user_id == uid)
+        .where(Transaction.user_id == user_id)
         .order_by(Transaction.date.desc())
         .limit(safe_limit)
     )
@@ -55,11 +52,7 @@ async def get_recent_transactions(
 
 
 @tool
-async def get_spending_summary(
-    user_id: Annotated[str, InjectedToolArg],
-    db: Annotated[AsyncSession, InjectedToolArg],
-    days: int = 30,
-) -> dict[str, Any]:
+async def get_spending_summary(days: int = 30) -> dict[str, Any]:
     """Get aggregated spending summary for the user over the last N days.
 
     Calculates total expenses, total income, net savings/deficit, and transaction counts.
@@ -70,7 +63,8 @@ async def get_spending_summary(
     Returns:
         Dictionary containing total_expense, total_income, net_flow, and transaction_count.
     """
-    uid = str(user_id)
+    user_id = get_user_id()
+    db = get_db()
 
     start_date = datetime.now() - timedelta(days=days)
 
@@ -81,7 +75,7 @@ async def get_spending_summary(
             func.count(Transaction.id).label("count"),
         )
         .where(
-            Transaction.user_id == uid,
+            Transaction.user_id == user_id,
             Transaction.date >= start_date,
         )
         .group_by(Transaction.direction)
@@ -113,12 +107,7 @@ async def get_spending_summary(
 
 
 @tool
-async def get_category_spending(
-    user_id: Annotated[str, InjectedToolArg],
-    db: Annotated[AsyncSession, InjectedToolArg],
-    category: str = "",
-    days: int = 30,
-) -> dict[str, Any]:
+async def get_category_spending(category: str, days: int = 30) -> dict[str, Any]:
     """Get total amount spent on a specific category over a time period.
 
     Use this tool when the user asks questions like:
@@ -132,14 +121,16 @@ async def get_category_spending(
     Returns:
         Dictionary with category name, total_spent, and list of matching transactions.
     """
-    uid = str(user_id)
+    user_id = get_user_id()
+    db = get_db()
+
     cat_upper = category.strip().upper()
     start_date = datetime.now() - timedelta(days=days)
 
     query = (
         select(Transaction)
         .where(
-            Transaction.user_id == uid,
+            Transaction.user_id == user_id,
             func.upper(Transaction.category) == cat_upper,
             Transaction.date >= start_date,
         )

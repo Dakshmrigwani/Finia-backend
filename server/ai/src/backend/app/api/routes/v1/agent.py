@@ -10,11 +10,12 @@ from uuid import UUID
 import logfire
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage
 from pydantic import BaseModel
 from sqlalchemy import select
 
 from app.agents.assistant import financial_agent
+from app.agents.context import set_agent_context
 from app.api.deps import DBSession, get_conversation_service, get_current_user
 from app.db.models.user import User
 from app.db.session import get_db_context
@@ -22,6 +23,8 @@ from app.schemas.conversation import (
     ConversationCreate,
     MessageCreate,
 )
+from app.services.memory import MemoryService
+
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +37,9 @@ class ChatRequest(BaseModel):
     message: str
 
 
-def build_message_history(history: list[dict[str, str]]) -> list[HumanMessage | AIMessage | SystemMessage]:
+def build_message_history(
+    history: list[dict[str, str]],
+) -> list[HumanMessage | AIMessage | SystemMessage]:
     """Convert conversation history to LangChain message format."""
     messages: list[HumanMessage | AIMessage | SystemMessage] = []
     for msg in history:
@@ -47,9 +52,23 @@ def build_message_history(history: list[dict[str, str]]) -> list[HumanMessage | 
     return messages
 
 
-def _make_tool_kwargs(user_id: str, db: Any) -> dict[str, Any]:
-    """Build the injected tool arguments dict passed to every tool call."""
-    return {"user_id": user_id, "db": db}
+def _extract_text(content: Any) -> str:
+    """Safely extract text from an AIMessageChunk content field.
+
+    LangChain content can be a plain string or a list of content blocks
+    e.g. [{"type": "text", "text": "..."}].
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                parts.append(block.get("text", ""))
+            elif isinstance(block, str):
+                parts.append(block)
+        return "".join(parts)
+    return ""
 
 
 @router.post("/agent/chat")
@@ -61,26 +80,70 @@ async def chat(
 ) -> StreamingResponse:
     """Chat with Finia AI financial coach with SSE response streaming.
 
+    Enriches context with long-term memory (pgvector recall + user facts)
+    and stores each turn's embeddings for future recall.
+
     Streams response chunks using Server-Sent Events (SSE) format: 'data: {chunk}\\n\\n'.
     """
-    tool_kwargs = _make_tool_kwargs(str(current_user.id), db)
-    input_messages = {"messages": [HumanMessage(content=request.message)]}
+    user_id = str(current_user.id)
+    memory_service = MemoryService(db)
+
+    # ── Build memory-enriched context ─────────────────────────────────────────
+    memories = await memory_service.recall_relevant(user_id, request.message, top_k=4)
+    user_facts = await memory_service.get_user_facts(user_id)
+
+    memory_context_parts = []
+    if user_facts:
+        facts_str = "\n".join(f"  - {k}: {v}" for k, v in user_facts.items())
+        memory_context_parts.append(f"Known facts about this user:\n{facts_str}")
+    if memories:
+        memories_str = "\n".join(f"  - {m}" for m in memories)
+        memory_context_parts.append(f"Relevant past conversations:\n{memories_str}")
+
+    input_messages: dict
+    if memory_context_parts:
+        memory_injection = SystemMessage(
+            content="[MEMORY CONTEXT]\n" + "\n\n".join(memory_context_parts)
+        )
+        input_messages = {"messages": [memory_injection, HumanMessage(content=request.message)]}
+    else:
+        input_messages = {"messages": [HumanMessage(content=request.message)]}
+
+    set_agent_context(user_id, db)
+
+    # ── Store user message embedding (fire-and-forget style) ──────────────────
+    try:
+        await memory_service.embed_and_store(user_id, "user", request.message)
+        await db.commit()
+    except Exception as e:
+        logger.warning(f"Failed to store user message embedding: {e}")
+
+    final_output: list[str] = []
 
     async def event_generator() -> AsyncGenerator[str, None]:
         try:
-            async for event in financial_agent.astream_events(
-                input_messages,
-                version="v2",
-                config={"configurable": tool_kwargs},
-            ):
+            async for event in financial_agent.astream_events(input_messages, version="v2"):
                 kind = event["event"]
                 if kind == "on_chat_model_stream":
                     chunk = event["data"].get("chunk")
-                    if chunk and hasattr(chunk, "content") and chunk.content:
-                        yield f"data: {chunk.content}\n\n"
+                    if isinstance(chunk, AIMessageChunk):
+                        text = _extract_text(chunk.content)
+                        if text:
+                            final_output.append(text)
+                            yield f"data: {text}\n\n"
         except Exception as e:
             logger.exception(f"Error streaming response from financial_agent: {e}")
             yield f"data: [ERROR] {e!s}\n\n"
+
+        # ── Post-response: store AI response embedding + extract user facts ───
+        full_response = "".join(final_output)
+        if full_response:
+            try:
+                await memory_service.embed_and_store(user_id, "assistant", full_response)
+                await memory_service.extract_and_store_facts(user_id, request.message, full_response)
+                await db.commit()
+            except Exception as e:
+                logger.warning(f"Failed to store assistant embedding / facts: {e}")
 
     return StreamingResponse(
         event_generator(),
@@ -135,6 +198,7 @@ TOOL_LABELS: dict[str, str] = {
     "get_budgets": "Checking your budgets and spending limits...",
     "get_goals": "Reviewing your savings and financial goals...",
     "get_current_datetime": "Checking current date and time...",
+    "recall_memory": "Searching long-term memory...",
 }
 
 
@@ -216,11 +280,41 @@ async def agent_websocket(
 
                     await manager.send_event(websocket, "user_prompt", {"content": user_message})
 
+                    # ── Memory enrichment ──────────────────────────────────────
+                    memory_service = MemoryService(db)
+                    memories = await memory_service.recall_relevant(
+                        str(user_id) if user_id else "", user_message, top_k=4
+                    )
+                    user_facts = await memory_service.get_user_facts(
+                        str(user_id) if user_id else ""
+                    )
+                    # Embed and store incoming user message
+                    await memory_service.embed_and_store(
+                        str(user_id) if user_id else "", "user", user_message
+                    )
+
+                    # Set per-request context (user_id + db) for tool injection via ContextVar
+                    set_agent_context(str(user_id) if user_id else "", db)
+
                     # Build message history for LangGraph
                     lc_history = build_message_history(conversation_history)
-                    all_messages = lc_history + [HumanMessage(content=user_message)]
 
-                    tool_kwargs = _make_tool_kwargs(str(user_id) if user_id else "", db)
+                    # Prepend memory context as a SystemMessage if any facts/memories exist
+                    memory_context_parts = []
+                    if user_facts:
+                        facts_str = "\n".join(f"  - {k}: {v}" for k, v in user_facts.items())
+                        memory_context_parts.append(f"Known facts about this user:\n{facts_str}")
+                    if memories:
+                        memories_str = "\n".join(f"  - {m}" for m in memories)
+                        memory_context_parts.append(f"Relevant past conversations:\n{memories_str}")
+
+                    if memory_context_parts:
+                        memory_msg = SystemMessage(
+                            content="[MEMORY CONTEXT]\n" + "\n\n".join(memory_context_parts)
+                        )
+                        all_messages = [memory_msg] + lc_history + [HumanMessage(content=user_message)]
+                    else:
+                        all_messages = lc_history + [HumanMessage(content=user_message)]
 
                     # Timing trackers
                     t_model_start: float | None = None
@@ -232,8 +326,8 @@ async def agent_websocket(
                     # Stream events from LangGraph
                     async for event in financial_agent.astream_events(
                         {"messages": all_messages},
+
                         version="v2",
-                        config={"configurable": tool_kwargs},
                     ):
                         kind = event["event"]
                         name = event.get("name", "")
@@ -256,25 +350,27 @@ async def agent_websocket(
                         # ── Streaming text delta ───────────────────────────────
                         elif kind == "on_chat_model_stream":
                             chunk = event["data"].get("chunk")
-                            if chunk and hasattr(chunk, "content") and chunk.content:
-                                if t_first_text_delta is None:
-                                    t_first_text_delta = time.perf_counter()
-                                    if last_tool_result_time is not None:
-                                        dur_tool_to_text = t_first_text_delta - last_tool_result_time
-                                        logger.info(
-                                            f"[TIMING 3] Final tool_result -> first text_delta: "
-                                            f"{dur_tool_to_text:.3f}s ({dur_tool_to_text * 1000:.1f}ms)"
-                                        )
-                                        logfire.info(
-                                            "Agent tool_result to first text_delta: {duration:.3f}s",
-                                            duration=dur_tool_to_text,
-                                        )
-                                final_output += chunk.content
-                                await manager.send_event(
-                                    websocket,
-                                    "text_delta",
-                                    {"content": chunk.content},
-                                )
+                            if isinstance(chunk, AIMessageChunk):
+                                text = _extract_text(chunk.content)
+                                if text:
+                                    if t_first_text_delta is None:
+                                        t_first_text_delta = time.perf_counter()
+                                        if last_tool_result_time is not None:
+                                            dur_tool_to_text = t_first_text_delta - last_tool_result_time
+                                            logger.info(
+                                                f"[TIMING 3] Final tool_result -> first text_delta: "
+                                                f"{dur_tool_to_text:.3f}s ({dur_tool_to_text * 1000:.1f}ms)"
+                                            )
+                                            logfire.info(
+                                                "Agent tool_result to first text_delta: {duration:.3f}s",
+                                                duration=dur_tool_to_text,
+                                            )
+                                    final_output += text
+                                    await manager.send_event(
+                                        websocket,
+                                        "text_delta",
+                                        {"content": text},
+                                    )
 
                         # ── Tool call begins ───────────────────────────────────
                         elif kind == "on_tool_start":
@@ -348,7 +444,7 @@ async def agent_websocket(
                             if output_messages:
                                 last_msg = output_messages[-1]
                                 if hasattr(last_msg, "content") and last_msg.content:
-                                    final_output = last_msg.content
+                                    final_output = _extract_text(last_msg.content) or final_output
                             await manager.send_event(
                                 websocket,
                                 "final_result",
@@ -370,11 +466,23 @@ async def agent_websocket(
                                 MessageCreate(
                                     role="assistant",
                                     content=final_output,
-                                    model_name=str(financial_agent.get_graph().name or "finia-agent"),
+                                    model_name="finia-agent",
                                 ),
                             )
                         except Exception as e:
                             logger.warning(f"Failed to persist assistant response: {e}")
+
+                    # ── Store memory: embed assistant response + extract user facts ──
+                    if final_output and user_id:
+                        try:
+                            await memory_service.embed_and_store(
+                                str(user_id), "assistant", final_output
+                            )
+                            await memory_service.extract_and_store_facts(
+                                str(user_id), user_message, final_output
+                            )
+                        except Exception as e:
+                            logger.warning(f"Failed to store memory after WS response: {e}")
 
                     total_dur = time.perf_counter() - t_recv
                     dur_tool_to_text = (

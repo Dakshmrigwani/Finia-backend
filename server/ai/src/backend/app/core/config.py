@@ -98,7 +98,7 @@ class Settings(BaseSettings):
     # === AI Agent (LangChain + LangGraph + LangSmith) ===
     GROQ_API_KEY: str = ""
     OPENROUTER_API_KEY: str = ""
-    AI_MODEL: str = "llama-3.3-70b-versatile"
+    AI_MODEL: str = "qwen/qwen3.8-27b"
     AI_TEMPERATURE: float = 0.7
     LLM_PROVIDER: str = "groq"
 

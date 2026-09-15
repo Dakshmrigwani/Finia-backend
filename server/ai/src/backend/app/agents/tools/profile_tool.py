@@ -1,26 +1,22 @@
 """User profile tool for financial coaching agent."""
 
-from typing import Annotated
+from langchain_core.tools import tool
 
-from langchain_core.tools import InjectedToolArg, tool
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
+from app.agents.context import get_db, get_user_id
 from app.db.models.user import User
+from sqlalchemy import select
 
 
 @tool
-async def get_user_profile(
-    user_id: Annotated[str, InjectedToolArg],
-    db: Annotated[AsyncSession, InjectedToolArg],
-) -> dict:
+async def get_user_profile() -> dict:
     """Get user financial profile including income, currency, motive, and spending habits.
 
-    Reads the user profile from the database using the provided user_id and db session.
+    Reads the user profile from the database for the current user.
     """
-    user_id_str = str(user_id)
+    user_id = get_user_id()
+    db = get_db()
 
-    result = await db.execute(select(User).where(User.id == user_id_str))
+    result = await db.execute(select(User).where(User.id == str(user_id)))
     user = result.scalar_one_or_none()
 
     if user is None:

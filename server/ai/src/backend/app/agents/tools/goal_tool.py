@@ -1,20 +1,16 @@
 """Goal inquiry and savings progress tools for Finia Coach AI Agent."""
 
-from typing import Annotated, Any
+from typing import Any
 
-from langchain_core.tools import InjectedToolArg, tool
+from langchain_core.tools import tool
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.context import get_db, get_user_id
 from app.db.models.goal import Goal
 
 
 @tool
-async def get_goals(
-    user_id: Annotated[str, InjectedToolArg],
-    db: Annotated[AsyncSession, InjectedToolArg],
-    status: str | None = None,
-) -> list[dict[str, Any]]:
+async def get_goals(status: str | None = None) -> list[dict[str, Any]]:
     """Retrieve the user's savings and financial goals with progress.
 
     Use this tool when the user asks:
@@ -24,15 +20,16 @@ async def get_goals(
     - 'Can I afford this while still meeting my goal?'
 
     Args:
-        status: Optional status filter ('ACTIVE', 'COMPLETED', 'ARCHIVED'). Defaults to all goals if not provided.
+        status: Optional status filter ('ACTIVE', 'COMPLETED', 'ARCHIVED'). Defaults to all goals.
 
     Returns:
         List of goals containing name, type, target_amount, current_saved_amount,
         remaining_amount, progress_percentage, target_date, status, and smart_saver_enabled.
     """
-    uid = str(user_id)
+    user_id = get_user_id()
+    db = get_db()
 
-    query = select(Goal).where(Goal.user_id == uid)
+    query = select(Goal).where(Goal.user_id == user_id)
 
     if status:
         query = query.where(Goal.status == status.strip().upper())

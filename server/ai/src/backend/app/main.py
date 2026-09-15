@@ -24,6 +24,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from app.core.logfire_setup import instrument_asyncpg
     instrument_asyncpg()
 
+    import asyncio
+    from app.services.memory import prewarm_embedding_model
+    asyncio.create_task(asyncio.to_thread(prewarm_embedding_model))
+
     yield
 
     # === Shutdown ===

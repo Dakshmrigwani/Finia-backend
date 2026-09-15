@@ -7,6 +7,10 @@ from app.db.models.conversation import Conversation, Message, ToolCall
 from app.db.models.transaction import Transaction
 from app.db.models.budget import Budget
 from app.db.models.goal import Goal
+from app.db.models.memory import MessageEmbedding, UserMemory
 
-__all__ = ['User', 'Session', 'Item', 'Conversation', 'Message', 'ToolCall', 'Transaction', 'Budget', 'Goal']
+__all__ = [
+    'User', 'Session', 'Item', 'Conversation', 'Message', 'ToolCall',
+    'Transaction', 'Budget', 'Goal', 'MessageEmbedding', 'UserMemory',
+]
 

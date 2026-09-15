@@ -11,7 +11,10 @@ from app.core.config import settings
 from app.db.base import Base
 
 # Import all models here to ensure they are registered with metadata
-from app.db.models.user import User  # noqa: F401
+from app.db.models import (  # noqa: F401
+    User, Session, Item, Conversation, Message, ToolCall,
+    Transaction, Budget, Goal, MessageEmbedding, UserMemory,
+)
 
 config = context.config
 

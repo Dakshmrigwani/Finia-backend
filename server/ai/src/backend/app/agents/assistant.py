@@ -9,6 +9,7 @@ from app.agents.prompts import SYSTEM_PROMPT
 from app.agents.tools.budget_tool import get_budgets
 from app.agents.tools.datetime_tool import get_current_datetime
 from app.agents.tools.goal_tool import get_goals
+from app.agents.tools.memory_tool import recall_memory
 from app.agents.tools.profile_tool import get_user_profile
 from app.agents.tools.transaction_tool import (
     get_category_spending,
@@ -32,28 +33,37 @@ if settings.GROQ_API_KEY:
 else:
     os.environ.setdefault("GROQ_API_KEY", "gsk_placeholder_for_agent_init")
 
+
+def _resolve_model_name() -> str:
+    """Strip legacy PydanticAI provider prefixes (groq:, openrouter:, openai:) from AI_MODEL."""
+    model = settings.AI_MODEL or "llama-3.3-70b-versatile"
+    for prefix in ("groq:", "openrouter:", "openai:"):
+        if model.startswith(prefix):
+            return model[len(prefix):]
+    return model
+
+
 _llm = ChatGroq(
-    model=settings.AI_MODEL,
+    model=_resolve_model_name(),
     temperature=settings.AI_TEMPERATURE,
     streaming=True,
+    max_tokens=900,  # stay under Groq free-tier 1000 OTPM limit
 )
 
-# ── Tool list ─────────────────────────────────────────────────────────────────
-_tools = [
-    get_user_profile,
-    get_recent_transactions,
-    get_spending_summary,
-    get_category_spending,
-    get_budgets,
-    get_goals,
-    get_current_datetime,
-]
-
-# ── LangGraph ReAct agent ─────────────────────────────────────────────────────
-# create_react_agent wires: LLM ↔ tools with a built-in ReAct loop.
-# Context (user_id, db) is passed at invoke time via tool_call_kwargs / config.
+# ── Module-level ReAct agent (shared across all requests) ─────────────────────
+# Tools read user_id and db from ContextVar (set per-request in the route handler).
+# No per-request agent creation needed — ContextVar ensures request isolation.
 financial_agent = create_react_agent(
     model=_llm,
-    tools=_tools,
+    tools=[
+        get_user_profile,
+        get_recent_transactions,
+        get_spending_summary,
+        get_category_spending,
+        get_budgets,
+        get_goals,
+        get_current_datetime,
+        recall_memory,
+    ],
     prompt=SYSTEM_PROMPT,
 )
