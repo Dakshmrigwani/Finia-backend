@@ -52,7 +52,9 @@ const forgotPassword: RequestHandler = asyncWrapper(async (req, res) => {
 });
 
 const refreshTokens: RequestHandler = asyncWrapper(async (req, res) => {
-  const tokens = await authService.refreshAuth(req.body.refreshToken);
+  const { refreshToken } = req.body;
+  console.log(refreshToken)
+  const tokens = await authService.refreshAuth(refreshToken);
   const payload = ApiResponse.ok("Tokens refreshed successfully", tokens);
   sendResponse(res, httpStatus.OK, payload);
 });
@@ -87,6 +89,12 @@ const resendEmailVerification: RequestHandler = asyncWrapper(async (req, res) =>
   sendResponse(res, httpStatus.OK, payload);
 });
 
+const googleAuth: RequestHandler = asyncWrapper(async (req, res) => {
+  const result = await authService.loginOrRegisterWithGoogle(req.body);
+  const payload = ApiResponse.ok("Google authentication successful", result);
+  sendResponse(res, httpStatus.OK, payload);
+});
+
 export default {
   login,
   logout,
@@ -97,4 +105,6 @@ export default {
   verifyEmail,
   register,
   resendEmailVerification,
+  googleAuth,
 };
+

@@ -14,6 +14,17 @@ services:
     networks:
       - app-network
 
+  redis:
+    container_name: valkey
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis-data:/data
+    networks:
+      - app-network
+
   app:
     build:
       context: .
@@ -24,10 +35,12 @@ services:
       - ./.env
     depends_on:
       - db
+      - redis
     command: sh -c './start-docker.sh'
 
 volumes:
   postgres-data:
+  redis-data:
 
 networks:
   app-network:

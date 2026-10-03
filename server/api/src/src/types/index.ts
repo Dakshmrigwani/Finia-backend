@@ -45,7 +45,10 @@ export interface CreateUserPayload {
   motive?: string;
   spendMostly?: string;
   role?: UserRole;
+  isEmailVerified?: boolean;
+  avatarUrl?: string;
 }
+
 
 
 // end user and token related types

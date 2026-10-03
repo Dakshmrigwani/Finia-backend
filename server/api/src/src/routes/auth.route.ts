@@ -202,4 +202,11 @@ router.post(
   authController.resendEmailVerification,
 );
 
+router.post(
+  "/google",
+  validate(authValidation.googleAuth),
+  authController.googleAuth,
+);
+
 export default router;
+

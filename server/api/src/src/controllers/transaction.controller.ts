@@ -1,5 +1,6 @@
 import transactionService from '@/services/transaction.service';
 import { importTransactionsFromPdf } from '@/services/transaction-import.service';
+import { enqueuePdfImport, getImportJobStatus, isQueueEnabled } from '@/queues/transaction.queue';
 import type { AuthedReq } from '@/types';
 import { ApiError, ApiResponse, asyncWrapper, sendResponse } from '@/utils';
 import type { RequestHandler } from 'express';
@@ -58,9 +59,9 @@ const deleteTransaction: RequestHandler = asyncWrapper(async (req, res) => {
 /**
  * POST /transaction/import/pdf
  *
- * Accepts a multipart/form-data PDF upload and runs the full import pipeline.
- * userId is sourced exclusively from the JWT — never from the request body.
- * Returns an ImportSummary (totalExtracted, inserted, duplicates, failed).
+ * Accepts a multipart/form-data PDF upload and pushes processing to BullMQ background queue.
+ * By default, returns 202 ACCEPTED with the jobId for polling/websockets.
+ * If ?sync=true is provided, falls back to synchronous processing (useful for testing).
  */
 const importPdf: RequestHandler = asyncWrapper(async (req, res) => {
   const { id: userId, currency } = (req as AuthedReq).user;
@@ -71,8 +72,47 @@ const importPdf: RequestHandler = asyncWrapper(async (req, res) => {
     throw new ApiError(httpStatus.BAD_REQUEST, 'No PDF file uploaded or file is empty.');
   }
 
-  const summary = await importTransactionsFromPdf(userId, file.buffer, currency ?? null);
-  const payload = ApiResponse.ok('PDF import completed', summary);
+  // If background queue is disabled (Redis/Valkey offline) or ?sync=true is provided, fallback to synchronous processing
+  if (!isQueueEnabled() || req.query.sync === 'true') {
+    const summary = await importTransactionsFromPdf(userId, file.buffer, currency ?? null);
+    const msg = isQueueEnabled()
+      ? 'PDF import completed synchronously'
+      : 'PDF import completed (synchronous fallback: Redis/Valkey offline)';
+    const payload = ApiResponse.ok(msg, summary);
+    sendResponse(res, httpStatus.OK, payload);
+    return;
+  }
+
+  // Production best practice: Offload heavy PDF parsing & bulk DB insertions to BullMQ
+  const job = await enqueuePdfImport(
+    userId,
+    file.buffer,
+    currency ?? null,
+    file.originalname,
+  );
+
+  const payload = ApiResponse.ok('PDF statement import queued for processing', {
+    jobId: job.id,
+    status: 'queued',
+    statusUrl: `/v1/transaction/import/status/${job.id}`,
+  });
+
+  sendResponse(res, httpStatus.ACCEPTED, payload);
+});
+
+/**
+ * GET /transaction/import/status/:jobId
+ *
+ * Checks progress and results of a BullMQ PDF import job.
+ */
+const getImportStatus: RequestHandler = asyncWrapper(async (req, res) => {
+  const { id: userId } = (req as AuthedReq).user;
+  const jobId = Array.isArray(req.params.jobId)
+    ? req.params.jobId[0]
+    : req.params.jobId;
+
+  const status = await getImportJobStatus(jobId, userId);
+  const payload = ApiResponse.ok('Import job status retrieved', status);
   sendResponse(res, httpStatus.OK, payload);
 });
 
@@ -85,4 +125,5 @@ export default {
   updateTransaction,
   deleteTransaction,
   importPdf,
+  getImportStatus,
 };

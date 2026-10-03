@@ -1,12 +1,15 @@
+import crypto from "node:crypto";
 import { logger } from "@/config/logger";
 import { tokenTypes } from "@/config/tokens";
+
 import { ApiError } from "@/utils";
 import { comparePassword } from "@/utils/password-hash";
 import httpStatus from "http-status";
 import tokenService from "./token.service";
 import userService from "./user.service";
 import emailService from "./email.service";
-import { User } from "@/generated/prisma/browser";
+import type { SafeUser } from "@/types";
+
 
 const loginUserWithEmailAndPassword = async (
   email: string,
@@ -40,8 +43,8 @@ const refreshAuth = async (refreshToken: string) => {
       tokenTypes.REFRESH,
     );
     const user = await userService.getUserById(refreshTokenDoc.userId);
-
     await tokenService.deleteToken({ userId: refreshTokenDoc.userId });
+    console.log(user)
     return tokenService.generateAuthTokens(user);
   } catch (error) {
     logger.error(error);
@@ -103,6 +106,41 @@ const resendEmailVerification = async (token: string) => {
   }
 };
 
+const loginOrRegisterWithGoogle = async (googleData: {
+  email: string;
+  name?: string;
+  avatarUrl?: string;
+}) => {
+  const existingUser = await userService.getUserByEmail(googleData.email);
+  let safeUser: SafeUser;
+
+  if (!existingUser) {
+    // Generate secure random password for DB schema compatibility
+    const randomPassword = crypto.randomUUID() + crypto.randomBytes(8).toString("hex");
+    safeUser = await userService.createUser({
+      name: googleData.name || googleData.email.split("@")[0],
+      email: googleData.email,
+      password: randomPassword,
+      isEmailVerified: true,
+      avatarUrl: googleData.avatarUrl,
+    });
+  } else {
+    if (!existingUser.isEmailVerified || (googleData.avatarUrl && !existingUser.avatarUrl)) {
+      safeUser = await userService.updateUserById(existingUser.id, {
+        isEmailVerified: true,
+        ...(googleData.avatarUrl && !existingUser.avatarUrl ? { avatarUrl: googleData.avatarUrl } : {}),
+      });
+    } else {
+      const { password, ...rest } = existingUser;
+      safeUser = rest;
+    }
+  }
+
+  const tokens = await tokenService.generateAuthTokens(safeUser);
+  return { user: safeUser, tokens };
+};
+
+
 export default {
   loginUserWithEmailAndPassword,
   logout,
@@ -110,4 +148,6 @@ export default {
   resetPassword,
   verifyEmail,
   resendEmailVerification,
+  loginOrRegisterWithGoogle,
 };
+

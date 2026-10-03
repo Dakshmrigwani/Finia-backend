@@ -20,6 +20,9 @@ const envVarsSchema = z.object({
   SMTP_PASSWORD: z.string().optional(),
   EMAIL_FROM: z.string().optional(),
   FRONTEND_URL: z.string().url('FRONTEND_URL must be a valid URL'),
+  REDIS_HOST: z.string().default('127.0.0.1'),
+  REDIS_PORT: z.coerce.number().default(6379),
+  REDIS_PASSWORD: z.string().optional(),
 });
 
 const result = envVarsSchema.safeParse(process.env);
@@ -65,5 +68,10 @@ export const env = {
   },
   frontend: {
     url: envVars.FRONTEND_URL,
+  },
+  redis: {
+    host: envVars.REDIS_HOST,
+    port: envVars.REDIS_PORT,
+    password: envVars.REDIS_PASSWORD,
   },
 };

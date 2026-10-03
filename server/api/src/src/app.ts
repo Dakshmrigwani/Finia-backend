@@ -13,9 +13,10 @@ import helmet from 'helmet';
 import httpStatus from 'http-status';
 import { prismaErrorHandler } from './middlewares/prisma-error';
 import swaggerUi from "swagger-ui-express";
-import  specs  from "./docs/swagger";
+import specs from "./docs/swagger";
 
 const app = express();
+
 
 if (env.mode !== 'test') {
   app.use(morgan.successHandler);
@@ -54,6 +55,8 @@ app.get('/', (_, res) => {
 
 // v1 api routes
 app.use('/v1', routes);
+
+
 
 // send back a 404 error for any unknown api request
 app.use((_req, _res, next) => {

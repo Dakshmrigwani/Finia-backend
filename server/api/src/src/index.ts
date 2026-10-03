@@ -3,6 +3,7 @@ import app from './app';
 import { env } from './config';
 import { logger } from './config/logger';
 import prisma from './lib/prisma';
+import { initWorkers, shutdownWorkers } from './workers';
 
 let server: Server;
 
@@ -10,6 +11,9 @@ async function startServer() {
   try {
     await prisma.$connect();
     logger.info('Connected to PostgreSQL');
+
+    // Initialize BullMQ background workers (probes Redis/Valkey connectivity)
+    await initWorkers();
 
     server = app.listen(env.port, '0.0.0.0', () => {
       logger.info(`Listening on port ${env.port} on all interfaces`);
@@ -22,7 +26,13 @@ async function startServer() {
 
 void startServer();
 
-const exitHandler = () => {
+const exitHandler = async () => {
+  try {
+    await shutdownWorkers();
+  } catch (err) {
+    logger.error('Error during worker shutdown:', err);
+  }
+
   if (server) {
     server.close(() => {
       logger.info('Server closed');
@@ -35,15 +45,29 @@ const exitHandler = () => {
 
 const unexpectedErrorHandler = (error: unknown) => {
   logger.error(error);
-  exitHandler();
+  void exitHandler();
 };
 
 process.on('uncaughtException', unexpectedErrorHandler);
 process.on('unhandledRejection', unexpectedErrorHandler);
 
-process.on('SIGTERM', () => {
-  logger.info('SIGTERM received');
-  if (server) {
-    server.close();
+const gracefulShutdown = async (signal: string) => {
+  logger.info(`${signal} received`);
+  try {
+    await shutdownWorkers();
+  } catch (err) {
+    logger.error('Error during worker shutdown:', err);
   }
-});
+
+  if (server) {
+    server.close(() => {
+      logger.info('HTTP server closed');
+      process.exit(0);
+    });
+  } else {
+    process.exit(0);
+  }
+};
+
+process.on('SIGTERM', () => void gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => void gracefulShutdown('SIGINT'));

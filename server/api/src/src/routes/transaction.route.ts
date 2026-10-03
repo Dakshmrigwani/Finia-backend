@@ -140,6 +140,35 @@ router.post(
   transactionController.importPdf,
 );
 
+/**
+ * @swagger
+ * /v1/transaction/import/status/{jobId}:
+ *   get:
+ *     summary: Get background PDF import job status and progress
+ *     tags: [Transaction]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: jobId
+ *         required: true
+ *         schema: { type: string }
+ *         description: BullMQ job ID returned from POST /import/pdf
+ *     responses:
+ *       200:
+ *         description: Job status, progress, and result summary
+ *       403:
+ *         description: Forbidden (job belongs to another user)
+ *       404:
+ *         description: Job not found
+ */
+router.get(
+  '/import/status/:jobId',
+  auth(),
+  validate(transactionValidation.getImportStatus),
+  transactionController.getImportStatus,
+);
+
 router
   .route('/')
   .post(auth(), validate(transactionValidation.createTransaction), transactionController.createTransaction)

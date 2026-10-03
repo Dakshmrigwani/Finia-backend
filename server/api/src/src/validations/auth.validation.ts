@@ -63,6 +63,15 @@ const resendEmailVerification = {
   }),
 };
 
+const googleAuth = {
+  body: z.object({
+    idToken: z.string().optional(),
+    email: z.string().email(),
+    name: z.string().optional(),
+    avatarUrl: z.string().optional(),
+  }),
+};
+
 export default {
   register,
   login,
@@ -72,4 +81,6 @@ export default {
   resetPassword,
   verifyEmail,
   resendEmailVerification,
+  googleAuth,
 };
+

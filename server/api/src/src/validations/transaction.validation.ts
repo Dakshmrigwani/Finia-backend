@@ -118,10 +118,19 @@ const updateTransaction = {
     }),
 };
 
+// ─── Import Status ────────────────────────────────────────────────────────────
+
+const getImportStatus = {
+  params: z.object({
+    jobId: z.string().min(1, 'jobId is required'),
+  }),
+};
+
 export default {
   createTransaction,
   getTransactions,
   getTransaction,
   updateTransaction,
   deleteTransaction,
+  getImportStatus,
 };
