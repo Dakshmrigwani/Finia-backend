@@ -26,7 +26,7 @@
     "start:docker": "docker compose up --env-file ./.env --build -d",
     "seed:admin": "tsx ./scripts/seed-admin.ts",
     "generate": "plop",
-    "prepare": "husky",
+    "prepare": "husky || true",
     "postinstall": "prisma generate"
   },
   "keywords": [],
