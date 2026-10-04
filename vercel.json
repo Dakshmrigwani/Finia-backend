@@ -1,5 +1,10 @@
 {
   "rewrites": [
-    { "source": "/(.*)", "destination": "server/ai/src/backend/app/main.py" }
-  ]
+    { "source": "/(.*)", "destination": "app/main.py" }
+  ],
+  "functions": {
+    "app/main.py": {
+      "excludeFiles": "{.venv/**,.pytest_cache/**,.ruff_cache/**,tests/**,**/*.pyc}"
+    }
+  }
 }
