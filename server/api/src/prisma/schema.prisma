@@ -34,6 +34,8 @@ model User {
   biometric       Boolean   @default(true)
   twoFactor       Boolean   @default(false)
   aiNudges        Boolean   @default(true)
+  onboarded       Boolean   @default(false)
+  signupMethod    SignupMethod @default(EMAIL) @map("signup_method")
   goals           Goal[]
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
@@ -142,6 +144,11 @@ model Budget {
   @@map("budgets")
 }
 
+enum SignupMethod {
+  EMAIL
+  GOOGLE
+}
+
 enum UserRole {
   USER
   ADMIN
@@ -161,6 +168,7 @@ enum TransactionSource {
   SMS
   BANK_API
   MANUAL
+  CSV
 }
 
 enum TransactionType {

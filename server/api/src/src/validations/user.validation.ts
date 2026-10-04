@@ -40,6 +40,7 @@ const updateProfile = {
       biometric: z.boolean().optional(),
       twoFactor: z.boolean().optional(),
       aiNudges: z.boolean().optional(),
+      onboarded: z.boolean().optional(),
       newPassword: isPassword.optional(),
       oldPassword: isPassword.optional(),
     })

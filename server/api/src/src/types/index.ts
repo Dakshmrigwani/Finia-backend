@@ -1,9 +1,9 @@
 import type { Request } from "express";
 import type { JwtPayload as BaseJwtPayload } from "jsonwebtoken";
-import { Token, TokenType, User, UserRole, Budget, Goal, GoalStatus, GoalType, AutomationFrequency, GoalCreatedVia, Transaction, TransactionType, TransactionDirection, TransactionCategory, TransactionSource, RecurrenceFrequency, Contact, UserContact } from "../generated/prisma/client";
+import { Token, TokenType, User, SignupMethod, UserRole, Budget, Goal, GoalStatus, GoalType, AutomationFrequency, GoalCreatedVia, Transaction, TransactionType, TransactionDirection, TransactionCategory, TransactionSource, RecurrenceFrequency, Contact, UserContact } from "../generated/prisma/client";
 
 // Central export to prisma-client types
-export { User, Token, TokenType, UserRole, Budget, Goal, GoalStatus, GoalType, AutomationFrequency, GoalCreatedVia, Transaction, TransactionType, TransactionDirection, TransactionCategory, TransactionSource, RecurrenceFrequency, Contact, UserContact };
+export { User, Token, TokenType, SignupMethod, UserRole, Budget, Goal, GoalStatus, GoalType, AutomationFrequency, GoalCreatedVia, Transaction, TransactionType, TransactionDirection, TransactionCategory, TransactionSource, RecurrenceFrequency, Contact, UserContact };
 
 export type SafeUser = Omit<User, "password">;
 
@@ -47,6 +47,8 @@ export interface CreateUserPayload {
   role?: UserRole;
   isEmailVerified?: boolean;
   avatarUrl?: string;
+  onboarded?: boolean;
+  signupMethod?: SignupMethod;
 }
 
 

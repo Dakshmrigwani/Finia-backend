@@ -14,6 +14,7 @@ import httpStatus from 'http-status';
 import { prismaErrorHandler } from './middlewares/prisma-error';
 import swaggerUi from "swagger-ui-express";
 import specs from "./docs/swagger";
+import { importRoute } from '@/import';
 
 const app = express();
 
@@ -55,6 +56,9 @@ app.get('/', (_, res) => {
 
 // v1 api routes
 app.use('/v1', routes);
+
+// Direct top-level route support for POST /transactions/import
+app.use('/transactions', importRoute);
 
 
 

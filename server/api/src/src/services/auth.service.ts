@@ -123,6 +123,8 @@ const loginOrRegisterWithGoogle = async (googleData: {
       password: randomPassword,
       isEmailVerified: true,
       avatarUrl: googleData.avatarUrl,
+      signupMethod: "GOOGLE",
+      onboarded: false,
     });
   } else {
     if (!existingUser.isEmailVerified || (googleData.avatarUrl && !existingUser.avatarUrl)) {

@@ -27,11 +27,10 @@ export const errorHandler = (err: ApiError, _req: Request, res: Response, _next:
     message = httpStatus[httpStatus.INTERNAL_SERVER_ERROR];
   }
 
-  res.locals.errorMessage = err.message;
-
   const response = {
     code: statusCode,
     message,
+    ...(err.details ? { details: err.details } : {}),
     ...(env.mode === 'development' && { stack: err.stack }),
   };
 

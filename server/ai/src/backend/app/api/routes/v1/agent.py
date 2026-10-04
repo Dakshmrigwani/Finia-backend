@@ -12,11 +12,11 @@ from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage
 from pydantic import BaseModel
-from sqlalchemy import select
+
 
 from app.agents.assistant import financial_agent
 from app.agents.context import set_agent_context
-from app.api.deps import DBSession, get_conversation_service, get_current_user
+from app.api.deps import DBSession, get_conversation_service, get_current_user, get_ws_current_user
 from app.db.models.user import User
 from app.db.session import get_db_context
 from app.schemas.conversation import (
@@ -205,8 +205,14 @@ TOOL_LABELS: dict[str, str] = {
 @router.websocket("/ws/agent")
 async def agent_websocket(
     websocket: WebSocket,
+    current_user: Annotated[User, Depends(get_ws_current_user)],
 ) -> None:
     """WebSocket endpoint for AI agent with full event streaming and timing instrumentation.
+
+    Authentication: pass the JWT access token as a query parameter:
+    ``wss://host/api/v1/ws/agent?token=<access_token>``
+    The connection is rejected with close code 4401 if the token is missing,
+    invalid, expired, or belongs to an inactive user.
 
     Uses LangGraph astream_events (v2) to stream all agent events including:
     - user_prompt: When user input is received
@@ -222,12 +228,12 @@ async def agent_websocket(
     {
         "message": "user message here",
         "history": [{"role": "user|assistant|system", "content": "..."}],
-        "conversation_id": "optional-uuid-to-continue-existing-conversation",
-        "user_id": "optional-user-uuid"
+        "conversation_id": "optional-uuid-to-continue-existing-conversation"
     }
     """
     await manager.connect(websocket)
 
+    user_id = str(current_user.id)
     conversation_history: list[dict[str, str]] = []
     current_conversation_id: str | None = None
 
@@ -246,14 +252,6 @@ async def agent_websocket(
             try:
                 async with get_db_context() as db:
                     conv_service = get_conversation_service(db)
-
-                    # Resolve user_id
-                    user_id = data.get("user_id")
-                    if not user_id:
-                        user_res = await db.execute(select(User).limit(1))
-                        first_user = user_res.scalar_one_or_none()
-                        if first_user:
-                            user_id = str(first_user.id)
 
                     # Handle conversation persistence
                     requested_conv_id = data.get("conversation_id")
@@ -283,18 +281,14 @@ async def agent_websocket(
                     # ── Memory enrichment ──────────────────────────────────────
                     memory_service = MemoryService(db)
                     memories = await memory_service.recall_relevant(
-                        str(user_id) if user_id else "", user_message, top_k=4
+                        user_id, user_message, top_k=4
                     )
-                    user_facts = await memory_service.get_user_facts(
-                        str(user_id) if user_id else ""
-                    )
+                    user_facts = await memory_service.get_user_facts(user_id)
                     # Embed and store incoming user message
-                    await memory_service.embed_and_store(
-                        str(user_id) if user_id else "", "user", user_message
-                    )
+                    await memory_service.embed_and_store(user_id, "user", user_message)
 
                     # Set per-request context (user_id + db) for tool injection via ContextVar
-                    set_agent_context(str(user_id) if user_id else "", db)
+                    set_agent_context(user_id, db)
 
                     # Build message history for LangGraph
                     lc_history = build_message_history(conversation_history)
@@ -473,13 +467,13 @@ async def agent_websocket(
                             logger.warning(f"Failed to persist assistant response: {e}")
 
                     # ── Store memory: embed assistant response + extract user facts ──
-                    if final_output and user_id:
+                    if final_output:
                         try:
                             await memory_service.embed_and_store(
-                                str(user_id), "assistant", final_output
+                                user_id, "assistant", final_output
                             )
                             await memory_service.extract_and_store_facts(
-                                str(user_id), user_message, final_output
+                                user_id, user_message, final_output
                             )
                         except Exception as e:
                             logger.warning(f"Failed to store memory after WS response: {e}")

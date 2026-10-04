@@ -6,7 +6,7 @@ Dependency injection factories for services, repositories, and authentication.
 
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, WebSocket
 from fastapi.security import OAuth2PasswordBearer
 
 from app.core.config import settings
@@ -59,6 +59,53 @@ from app.core.exceptions import AuthenticationError, AuthorizationError
 from app.db.models.user import User, UserRole
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login")
+
+
+async def get_ws_current_user(
+    websocket: WebSocket,
+    db: DBSession,
+) -> "User":
+    """Authenticate a WebSocket connection via ``?token=<jwt>`` query param.
+
+    Because browsers cannot set the ``Authorization`` header during the
+    WebSocket handshake, clients must pass the JWT as a query parameter:
+    ``wss://host/ws/agent?token=<access_token>``
+
+    The socket is accepted first (required by the ASGI spec before sending
+    anything) and then immediately closed with application code **4401** when
+    authentication fails, so clients receive a clear, actionable signal.
+
+    Raises:
+        Nothing — failures are communicated via WebSocket close code 4401.
+    """
+    from app.core.security import verify_token
+
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.accept()
+        await websocket.close(code=4401, reason="Missing token")
+        raise RuntimeError("WebSocket authentication failed: missing token")
+
+    payload = verify_token(token)
+    if payload is None or payload.get("type") not in ("ACCESS", "access"):
+        await websocket.accept()
+        await websocket.close(code=4401, reason="Invalid or expired token")
+        raise RuntimeError("WebSocket authentication failed: invalid token")
+
+    user_id = payload.get("sub")
+    if user_id is None:
+        await websocket.accept()
+        await websocket.close(code=4401, reason="Invalid token payload")
+        raise RuntimeError("WebSocket authentication failed: invalid payload")
+
+    user_service = UserService(db)
+    user = await user_service.get_by_id(str(user_id))
+    if not user.is_active:
+        await websocket.accept()
+        await websocket.close(code=4401, reason="User account is disabled")
+        raise RuntimeError("WebSocket authentication failed: inactive user")
+
+    return user
 
 
 async def get_current_user(

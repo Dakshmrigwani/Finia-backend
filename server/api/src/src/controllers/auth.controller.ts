@@ -12,7 +12,11 @@ import {VERIFICATION_EMAIL} from "@/utils/email-templates";
 import { ApiError, ApiResponse, asyncWrapper, sendResponse } from "@/utils";
 
 const register: RequestHandler = asyncWrapper(async (req, res) => {
-  const user = await userService.createUser(req.body as RegisterBody);
+  const user = await userService.createUser({
+    ...(req.body as RegisterBody),
+    signupMethod: "EMAIL",
+    onboarded: false,
+  });
   if (!user) {
     throw new ApiError(httpStatus.BAD_REQUEST, "Failed to create user");
   }

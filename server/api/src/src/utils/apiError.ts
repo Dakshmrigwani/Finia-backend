@@ -3,16 +3,19 @@ import httpStatus from 'http-status';
 export class ApiError extends Error {
   statusCode: number;
   isOperational: boolean;
+  details?: unknown;
 
   constructor(
     statusCode: number,
     message: string,
     isOperational = true, // false = programmer error, not user fault
     stack?: string,
+    details?: unknown,
   ) {
     super(message);
     this.statusCode = statusCode;
     this.isOperational = isOperational;
+    this.details = details;
 
     if (stack) {
       this.stack = stack;

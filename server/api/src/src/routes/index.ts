@@ -31,6 +31,10 @@ const defaultRoutes = [
     route: transactionRoute,
   },
   {
+    path: '/transactions',
+    route: transactionRoute,
+  },
+  {
     path: '/contacts',
     route: contactRoute,
   },

@@ -140,6 +140,46 @@ router.post(
   transactionController.importPdf,
 );
 
+import { uploadCsv, importCsvController } from '@/import';
+
+/**
+ * @swagger
+ * /v1/transaction/import:
+ *   post:
+ *     summary: Import bank statement CSV
+ *     tags: [Transaction]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [file]
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: Bank statement CSV file (max 5 MB, max 5000 rows)
+ *               dateFormat:
+ *                 type: string
+ *                 enum: [DD/MM/YYYY, MM/DD/YYYY, YYYY-MM-DD]
+ *     responses:
+ *       200:
+ *         description: Import summary
+ *       400:
+ *         description: Bad request
+ *       422:
+ *         description: Columns could not be detected
+ */
+router.post(
+  '/import',
+  auth(),
+  uploadCsv.single('file'),
+  importCsvController,
+);
+
 /**
  * @swagger
  * /v1/transaction/import/status/{jobId}:

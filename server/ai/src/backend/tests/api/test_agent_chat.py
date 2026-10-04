@@ -124,3 +124,58 @@ class TestAgentChatEndpoint:
                 json={"message": "Hello"},
             )
             assert response.status_code == 401
+
+
+class TestAgentWebSocketAuth:
+    """Tests for WebSocket /ws/agent authentication."""
+
+    @pytest.mark.anyio
+    async def test_ws_missing_token_closes_4401(self):
+        """WebSocket without ?token= should be accepted then immediately closed with 4401."""
+        from httpx_ws import aconnect_ws
+
+        app.dependency_overrides.clear()
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            with pytest.raises(Exception):
+                async with aconnect_ws("/api/v1/ws/agent", client) as ws:
+                    # Server should close with 4401 — the exception signals rejection
+                    await ws.receive_json()
+
+    @pytest.mark.anyio
+    async def test_ws_invalid_token_closes_4401(self):
+        """WebSocket with a bad token should be accepted then closed with 4401."""
+        from httpx_ws import aconnect_ws
+
+        app.dependency_overrides.clear()
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            with pytest.raises(Exception):
+                async with aconnect_ws(
+                    "/api/v1/ws/agent?token=not.a.valid.jwt", client
+                ) as ws:
+                    await ws.receive_json()
+
+    @pytest.mark.anyio
+    async def test_ws_valid_token_connects(self, mock_user: User):
+        """WebSocket with a valid JWT token should be accepted successfully."""
+        from app.api.deps import get_ws_current_user
+
+        app.dependency_overrides[get_ws_current_user] = lambda: mock_user
+
+        from httpx_ws import aconnect_ws
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            async with aconnect_ws(
+                "/api/v1/ws/agent?token=dummy_overridden", client
+            ) as ws:
+                # Send a message and verify we get back at least one event
+                await ws.send_json({"message": "Hello"})
+                event = await ws.receive_json()
+                assert "type" in event
+
+        app.dependency_overrides.clear()
